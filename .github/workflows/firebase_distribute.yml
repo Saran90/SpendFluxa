@@ -109,6 +109,7 @@ jobs:
         run: |
           flutter build apk \
             --release \
+            --android-skip-build-dependency-validation \
             --build-number=${{ github.run_number }} \
             --build-name=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
 

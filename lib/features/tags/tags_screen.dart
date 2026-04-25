@@ -176,7 +176,7 @@ class _TagsScreenState extends State<TagsScreen> {
               letterSpacing: 1.0,
             ),
           ),
-          if (trailing != null) trailing,
+          ?trailing,
         ],
       ),
     );

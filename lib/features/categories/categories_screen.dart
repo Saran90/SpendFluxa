@@ -452,7 +452,7 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               letterSpacing: 1.0,
             ),
           ),
-          if (trailing != null) trailing,
+          ?trailing,
         ],
       ),
     );
