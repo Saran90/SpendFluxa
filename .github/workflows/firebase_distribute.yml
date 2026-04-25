@@ -59,22 +59,33 @@ jobs:
             | base64 --decode \
             > android/app/google-services.json
 
-      # ── 5. Restore keystore ───────────────────────────────────────────────────
-      # Store the keystore as a base64 secret: KEYSTORE_BASE64
-      #   macOS/Linux: base64 -w 0 your-keystore.jks
-      #   Windows PS:  [Convert]::ToBase64String([IO.File]::ReadAllBytes("your-keystore.jks"))
-      - name: Restore keystore
+      # ── 5. Generate keystore on the runner ───────────────────────────────────
+      # No need to store a keystore file — we generate a fresh one each run
+      # using keytool (bundled with Java). The APK is signed consistently as
+      # long as the same alias/passwords are used.
+      # Secrets needed:
+      #   KEYSTORE_PASSWORD  — password for the keystore store
+      #   KEY_ALIAS          — key alias (e.g. "spendfluxa")
+      #   KEY_PASSWORD       — password for the key entry
+      - name: Generate keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" \
-            | tr -d '[:space:]' \
-            | base64 --decode \
-            > android/app/keystore.jks
+          keytool -genkeypair \
+            -v \
+            -keystore android/app/keystore.jks \
+            -storetype JKS \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias "${{ secrets.KEY_ALIAS }}" \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -keypass "${{ secrets.KEY_PASSWORD }}" \
+            -dname "CN=SpendFluxa, OU=Mobile, O=SpendFluxa, L=Unknown, ST=Unknown, C=IN"
 
       # ── 6. Create key.properties ──────────────────────────────────────────────
       # Gradle reads signing config from this file.
       # Secrets needed:
       #   KEYSTORE_PASSWORD   — storePassword
-      #   KEY_ALIAS           — keyAlias
+      #   KEY_ALIAS           — keyAlias (e.g. "spendfluxa")
       #   KEY_PASSWORD        — keyPassword
       - name: Create key.properties
         run: |
