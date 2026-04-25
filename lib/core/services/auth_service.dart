@@ -50,8 +50,8 @@ class AuthService extends ChangeNotifier {
   bool get isSignedIn => _currentUser != null;
 
   // google_sign_in 7.x uses GoogleSignIn.instance singleton
-  // Request Drive file scope so BackupService can upload backups.
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  bool _initialized = false;
 
   AuthService() {
     _restoreSession();
@@ -82,11 +82,16 @@ class AuthService extends ChangeNotifier {
   /// cached credentials. No UI is shown. If it fails (e.g. token revoked),
   /// _googleAccount stays null and the user will be prompted when they try
   /// to use a Drive feature.
+  Future<void> _ensureInitialized() async {
+    if (_initialized) return;
+    await _googleSignIn.initialize();
+    _initialized = true;
+  }
+
   Future<void> _silentSignIn() async {
     try {
-      await _googleSignIn.initialize();
+      await _ensureInitialized();
 
-      // Listen for the first sign-in event from the lightweight attempt.
       final eventFuture = _googleSignIn.authenticationEvents
           .where((e) => e is GoogleSignInAuthenticationEventSignIn)
           .map((e) => (e as GoogleSignInAuthenticationEventSignIn).user)
@@ -100,8 +105,6 @@ class AuthService extends ChangeNotifier {
       notifyListeners();
       debugPrint('[AuthService] Silent sign-in restored: ${account.email}');
     } catch (e) {
-      // Silent failure is expected when no cached credentials exist or
-      // the token has been revoked. The user will be prompted on demand.
       debugPrint('[AuthService] Silent sign-in skipped: $e');
     }
   }
@@ -131,9 +134,7 @@ class AuthService extends ChangeNotifier {
     _clearError();
 
     try {
-      // initialize() is idempotent — safe to call even if _silentSignIn
-      // already called it during session restore.
-      await _googleSignIn.initialize();
+      await _ensureInitialized();
 
       late GoogleSignInAccount account;
 
@@ -189,6 +190,7 @@ class AuthService extends ChangeNotifier {
     } finally {
       _currentUser = null;
       _googleAccount = null;
+      _initialized = false;
       await _clearSession();
       _setLoading(false);
       notifyListeners();
