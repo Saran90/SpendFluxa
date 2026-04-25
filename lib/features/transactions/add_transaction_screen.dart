@@ -969,7 +969,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                       onChanged: (val) =>
                           setState(() => _excludeFromExpense = val),
                       activeTrackColor: _typeColor.withValues(alpha: 0.5),
-                      activeColor: _typeColor,
+                      activeThumbColor: _typeColor,
                     ),
                   ],
                 ),
@@ -1527,7 +1527,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                       }
                     }),
                     activeTrackColor: _typeColor.withValues(alpha: 0.5),
-                    activeColor: _typeColor,
+                    activeThumbColor: _typeColor,
                   ),
                 ],
               ),
@@ -1822,7 +1822,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                       }
                     }),
                     activeTrackColor: _typeColor.withValues(alpha: 0.5),
-                    activeColor: _typeColor,
+                    activeThumbColor: _typeColor,
                   ),
                 ],
               ),
@@ -2207,7 +2207,7 @@ class _AccountPickerSheetState extends State<_AccountPickerSheet> {
             physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             itemCount: accounts.length + 1, // +1 for "New Account"
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (_, i) {
               // Last item → "New Account" button
               if (i == accounts.length) {

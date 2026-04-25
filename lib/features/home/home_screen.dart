@@ -369,7 +369,7 @@ class _HomeScreenState extends State<HomeScreen>
               ? Image.network(
                   user!.photoUrl!,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
+                  errorBuilder: (_, _, _) =>
                       _avatarFallback(user.displayName),
                 )
               : _avatarFallback(user?.displayName ?? '?'),

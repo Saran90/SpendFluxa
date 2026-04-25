@@ -343,7 +343,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: AccountType.values.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (_, index) {
           final type = AccountType.values[index];
           final isSelected = _type == type;
@@ -459,7 +459,7 @@ class _AddAccountSheetState extends State<_AddAccountSheet> {
           Switch(
             value: _isDefault,
             onChanged: (v) => setState(() => _isDefault = v),
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
           ),
         ],
       ),

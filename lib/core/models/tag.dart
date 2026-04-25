@@ -30,7 +30,7 @@ class Tag {
   Map<String, dynamic> toMap() => {
     'id': id,
     'name': name,
-    'color': color.value,
+    'color': color.toARGB32(),
     'iconCodePoint': icon.codePoint,
     'iconFontFamily': icon.fontFamily ?? 'MaterialIcons',
     'createdAt': createdAt.toIso8601String(),

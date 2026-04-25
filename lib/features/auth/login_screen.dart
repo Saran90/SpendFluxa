@@ -192,7 +192,7 @@ class _LoginScreenState extends State<LoginScreen>
                 height: 160,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.08),
+                  color: Colors.white.withValues(alpha: 0.08),
                 ),
               ),
             ),
@@ -204,7 +204,7 @@ class _LoginScreenState extends State<LoginScreen>
                 height: 80,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.06),
+                  color: Colors.white.withValues(alpha: 0.06),
                 ),
               ),
             ),
@@ -216,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen>
                 height: 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.accent.withOpacity(0.15),
+                  color: AppColors.accent.withValues(alpha: 0.15),
                 ),
               ),
             ),
@@ -248,7 +248,7 @@ class _LoginScreenState extends State<LoginScreen>
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
+                      color: Colors.black.withValues(alpha: 0.12),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -312,7 +312,7 @@ class _LoginScreenState extends State<LoginScreen>
                 'Smart money, smarter life',
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.white.withOpacity(0.8),
+                  color: Colors.white.withValues(alpha: 0.8),
                   letterSpacing: 0.4,
                 ),
               ),
@@ -337,7 +337,7 @@ class _LoginScreenState extends State<LoginScreen>
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -400,7 +400,7 @@ class _LoginScreenState extends State<LoginScreen>
             boxShadow: isActive
                 ? [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
+                      color: Colors.black.withValues(alpha: 0.08),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -548,7 +548,7 @@ class _LoginScreenState extends State<LoginScreen>
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
+            color: AppColors.primary.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, size: 18, color: AppColors.primary),
@@ -617,7 +617,7 @@ class _LoginScreenState extends State<LoginScreen>
             'or continue with',
             style: TextStyle(
               fontSize: 12,
-              color: AppColors.textSecondary.withOpacity(0.7),
+              color: AppColors.textSecondary.withValues(alpha: 0.7),
             ),
           ),
         ),
@@ -669,7 +669,7 @@ class _LoginScreenState extends State<LoginScreen>
           text: 'By continuing, you agree to our ',
           style: TextStyle(
             fontSize: 11,
-            color: AppColors.textSecondary.withOpacity(0.7),
+            color: AppColors.textSecondary.withValues(alpha: 0.7),
           ),
           children: [
             TextSpan(
@@ -702,7 +702,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   Widget _buildLoadingOverlay() {
     return Container(
-      color: Colors.black.withOpacity(0.35),
+      color: Colors.black.withValues(alpha: 0.35),
       child: Center(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
@@ -710,7 +710,7 @@ class _LoginScreenState extends State<LoginScreen>
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20),
             ],
           ),
           child: Column(

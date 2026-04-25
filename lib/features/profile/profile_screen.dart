@@ -121,7 +121,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ? Image.network(
                                 user!.photoUrl!,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) =>
+                                errorBuilder: (_, _, _) =>
                                     _fallback(user.displayName),
                               )
                             : _fallback(user?.displayName ?? '?'),
@@ -738,7 +738,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       trailing: Switch.adaptive(
         value: value,
         onChanged: onChanged,
-        activeColor: color,
+        activeThumbColor: color,
+        activeTrackColor: color.withValues(alpha: 0.4),
       ),
     );
   }
@@ -910,7 +911,7 @@ class _RestorePickerSheetState extends State<_RestorePickerSheet> {
                     vertical: 8,
                   ),
                   itemCount: files.length,
-                  separatorBuilder: (_, __) => const Divider(
+                  separatorBuilder: (_, _) => const Divider(
                     height: 1,
                     indent: 56,
                     color: Color(0xFFF0F2F5),
