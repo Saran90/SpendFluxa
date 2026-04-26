@@ -250,8 +250,34 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       // Create EMI transactions (automatically excluded from expense totals)
       await _createEmiTransactions(title, amount);
     } else if (_isRecurring) {
-      // Create recurring transactions
-      await _createRecurringTransactions(title, amount);
+      // Create or update recurring transactions
+      if (widget.editing != null) {
+        // Update existing recurring template
+        await widget.transactionService.updateTransaction(
+          widget.editing!.copyWith(
+            title: '$title (Recurring)',
+            amount: amount,
+            type: _type,
+            category: _selectedCategory,
+            date: _selectedDate,
+            note: _noteController.text.trim().isEmpty
+                ? null
+                : _noteController.text.trim(),
+            accountId: _fromAccount?.id,
+            toAccountId: _type == TransactionType.transfer
+                ? _toAccount?.id
+                : null,
+            tagIds: _selectedTagIds,
+            isRecurring: true,
+            recurringFrequency: _recurringFrequency,
+            recurringEndDate: _recurringEndDate,
+            excludeFromExpense: _excludeFromExpense,
+          ),
+        );
+      } else {
+        // Create new recurring template
+        await _createRecurringTransactions(title, amount);
+      }
     } else {
       // Create or update regular transaction
       if (widget.editing != null) {
@@ -303,48 +329,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   Future<void> _createRecurringTransactions(String title, double amount) async {
     final parentId = DateTime.now().millisecondsSinceEpoch.toString();
 
-    // Calculate how many instances to create (up to 12 months or until end date)
-    final endDate =
-        _recurringEndDate ?? DateTime.now().add(const Duration(days: 365));
-    final instances = <DateTime>[];
-    var currentDate = _selectedDate;
-
-    while (currentDate.isBefore(endDate) && instances.length < 12) {
-      instances.add(currentDate);
-
-      switch (_recurringFrequency) {
-        case 'daily':
-          currentDate = DateTime(
-            currentDate.year,
-            currentDate.month,
-            currentDate.day + 1,
-          );
-          break;
-        case 'weekly':
-          currentDate = DateTime(
-            currentDate.year,
-            currentDate.month,
-            currentDate.day + 7,
-          );
-          break;
-        case 'monthly':
-          currentDate = DateTime(
-            currentDate.year,
-            currentDate.month + 1,
-            currentDate.day,
-          );
-          break;
-        case 'yearly':
-          currentDate = DateTime(
-            currentDate.year + 1,
-            currentDate.month,
-            currentDate.day,
-          );
-          break;
-      }
-    }
-
-    // Create parent/template transaction
+    // Create parent/template transaction only
+    // Instances will be created when user confirms them via the banner
     widget.transactionService.addTransaction(
       Transaction(
         id: parentId,
@@ -354,8 +340,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
         category: _selectedCategory,
         date: _selectedDate,
         note: _noteController.text.trim().isEmpty
-            ? 'Recurring: $_recurringFrequency'
-            : '${_noteController.text.trim()}\nRecurring: $_recurringFrequency',
+            ? null
+            : _noteController.text.trim(),
         accountId: _fromAccount?.id,
         toAccountId: _type == TransactionType.transfer ? _toAccount?.id : null,
         tagIds: _selectedTagIds,
@@ -365,30 +351,6 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
         excludeFromExpense: _excludeFromExpense,
       ),
     );
-
-    // Create recurring instances
-    for (int i = 0; i < instances.length; i++) {
-      widget.transactionService.addTransaction(
-        Transaction(
-          id: '${parentId}_recurring_$i',
-          title: title,
-          amount: amount,
-          type: _type,
-          category: _selectedCategory,
-          date: instances[i],
-          note: _noteController.text.trim().isEmpty
-              ? null
-              : _noteController.text.trim(),
-          accountId: _fromAccount?.id,
-          toAccountId: _type == TransactionType.transfer
-              ? _toAccount?.id
-              : null,
-          tagIds: _selectedTagIds,
-          recurringParentId: parentId,
-          excludeFromExpense: _excludeFromExpense,
-        ),
-      );
-    }
   }
 
   Future<void> _createEmiTransactions(String title, double amount) async {

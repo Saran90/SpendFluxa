@@ -15,6 +15,8 @@ import '../../core/theme/app_colors.dart';
 import '../accounts/accounts_screen.dart';
 import '../categories/categories_screen.dart';
 import '../tags/tags_screen.dart';
+import '../help/help_screen.dart';
+import '../onboarding/onboarding_tour_screen.dart';
 import 'privacy_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -359,7 +361,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       icon: Icons.help_rounded,
                       label: 'Help & Support',
                       color: const Color(0xFF3498DB),
-                      onTap: () {},
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const HelpScreen()),
+                      ),
+                    ),
+                    _divider(),
+                    _tile(
+                      icon: Icons.tour_rounded,
+                      label: 'View App Tour',
+                      color: const Color(0xFF9B59B6),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const OnboardingTourScreen(),
+                          fullscreenDialog: true,
+                        ),
+                      ),
                     ),
                   ],
                 ),

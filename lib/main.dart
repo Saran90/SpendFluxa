@@ -10,6 +10,9 @@ import 'core/services/category_service.dart';
 import 'core/services/currency_service.dart';
 import 'core/services/tag_service.dart';
 import 'core/services/transaction_service.dart';
+import 'core/services/notification_service.dart';
+import 'core/services/reminder_service.dart';
+import 'core/services/recurring_confirmation_service.dart';
 import 'core/theme/app_colors.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
@@ -23,6 +26,10 @@ Future<void> main() async {
   ]);
   // Initialise the database (creates tables + seeds built-in data on first run)
   await AppDatabase.instance.database;
+
+  // Initialize notification service
+  await NotificationService().initialize();
+
   runApp(const SpendFluxaApp());
 }
 
@@ -45,6 +52,11 @@ class _SpendFluxaAppState extends State<SpendFluxaApp> {
   final TagService _tagService = TagService();
   final BackupService _backupService = BackupService();
   final BiometricService _biometricService = BiometricService();
+  late final ReminderService _reminderService = ReminderService(
+    notificationService: NotificationService(),
+  );
+  final RecurringConfirmationService _recurringConfirmationService =
+      RecurringConfirmationService();
 
   @override
   void dispose() {
@@ -57,6 +69,8 @@ class _SpendFluxaAppState extends State<SpendFluxaApp> {
     _tagService.dispose();
     _backupService.dispose();
     _biometricService.dispose();
+    _reminderService.dispose();
+    _recurringConfirmationService.dispose();
     super.dispose();
   }
 
@@ -100,6 +114,8 @@ class _SpendFluxaAppState extends State<SpendFluxaApp> {
           tagService: _tagService,
           backupService: _backupService,
           biometricService: _biometricService,
+          reminderService: _reminderService,
+          recurringConfirmationService: _recurringConfirmationService,
         ),
       },
       initialRoute: '/',

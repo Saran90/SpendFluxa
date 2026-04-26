@@ -11,10 +11,14 @@ import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
+import '../../core/services/reminder_service.dart';
+import '../../core/services/recurring_confirmation_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../accounts/account_detail_screen.dart';
 import '../analytics/analytics_screen.dart';
 import '../transactions/transaction_detail_screen.dart';
+import '../reminders/reminder_banner.dart';
+import '../reminders/recurring_confirmation_banner.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthService authService;
@@ -24,6 +28,8 @@ class HomeScreen extends StatefulWidget {
   final AccountService accountService;
   final CategoryService categoryService;
   final TagService tagService;
+  final ReminderService? reminderService;
+  final RecurringConfirmationService recurringConfirmationService;
   final ScrollController? scrollController;
 
   const HomeScreen({
@@ -35,6 +41,8 @@ class HomeScreen extends StatefulWidget {
     required this.accountService,
     required this.categoryService,
     required this.tagService,
+    this.reminderService,
+    required this.recurringConfirmationService,
     this.scrollController,
   });
 
@@ -87,6 +95,8 @@ class _HomeScreenState extends State<HomeScreen>
             widget.currencyService,
             widget.budgetService,
             widget.accountService,
+            if (widget.reminderService != null) widget.reminderService!,
+            widget.recurringConfirmationService,
           ]),
           builder: (context, _) {
             final fmt = widget.currencyService.formatter;
@@ -120,6 +130,21 @@ class _HomeScreenState extends State<HomeScreen>
                 SliverToBoxAdapter(
                   child: _buildSpendingProgress(expenses, income),
                 ),
+                // Recurring transaction confirmation banner (for transactions due today)
+                SliverToBoxAdapter(
+                  child: RecurringConfirmationBanner(
+                    confirmationService: widget.recurringConfirmationService,
+                    transactionService: widget.transactionService,
+                  ),
+                ),
+                // Reminder banner (for upcoming transactions)
+                if (widget.reminderService != null)
+                  SliverToBoxAdapter(
+                    child: ReminderBanner(
+                      reminderService: widget.reminderService!,
+                      transactionService: widget.transactionService,
+                    ),
+                  ),
                 SliverToBoxAdapter(
                   child: _buildSectionHeader('Recent Transactions', recent),
                 ),
@@ -474,6 +499,7 @@ class _HomeScreenState extends State<HomeScreen>
           currencyService: widget.currencyService,
           accountService: widget.accountService,
           tagService: widget.tagService,
+          reminderService: widget.reminderService,
         ),
       ),
     );
@@ -848,131 +874,137 @@ class _HomeScreenState extends State<HomeScreen>
         frequencyLabel = 'Recurring';
     }
 
-    return Container(
-      width: 200,
-      margin: EdgeInsets.only(right: isLast ? 0 : 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            tx.category.color.withValues(alpha: 0.08),
-            tx.category.color.withValues(alpha: 0.02),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: tx.category.color.withValues(alpha: 0.3),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Top: Icon with recurring badge
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: tx.category.color.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      tx.category.icon,
-                      color: tx.category.color,
-                      size: 22,
-                    ),
-                  ),
-                  Positioned(
-                    right: -4,
-                    top: -4,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                      child: const Icon(
-                        Icons.repeat_rounded,
-                        color: Colors.white,
-                        size: 10,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              // Frequency badge
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: tx.category.color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  frequencyLabel,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: tx.category.color,
-                  ),
-                ),
-              ),
+    return GestureDetector(
+      onTap: () => _openTransactionDetail(tx),
+      child: Container(
+        width: 200,
+        margin: EdgeInsets.only(right: isLast ? 0 : 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              tx.category.color.withValues(alpha: 0.08),
+              tx.category.color.withValues(alpha: 0.02),
             ],
           ),
-
-          // Middle: Title
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                tx.title.replaceAll(' (Recurring)', ''),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: tx.category.color.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Top: Icon with recurring badge
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: tx.category.color.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        tx.category.icon,
+                        color: tx.category.color,
+                        size: 22,
+                      ),
+                    ),
+                    Positioned(
+                      right: -4,
+                      top: -4,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: const Icon(
+                          Icons.repeat_rounded,
+                          color: Colors.white,
+                          size: 10,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (tx.recurringEndDate != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Until ${DateFormat('MMM d, yyyy').format(tx.recurringEndDate!)}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
+                // Frequency badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tx.category.color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    frequencyLabel,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: tx.category.color,
+                    ),
                   ),
                 ),
               ],
-            ],
-          ),
-
-          // Bottom: Amount
-          Text(
-            '$sign${fmt.format(tx.amount)}',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: amountColor,
             ),
-          ),
-        ],
+
+            // Middle: Title
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tx.title.replaceAll(' (Recurring)', ''),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (tx.recurringEndDate != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Until ${DateFormat('MMM d, yyyy').format(tx.recurringEndDate!)}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+
+            // Bottom: Amount
+            Text(
+              '$sign${fmt.format(tx.amount)}',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: amountColor,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

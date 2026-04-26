@@ -8,12 +8,16 @@ import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
+import '../../core/services/reminder_service.dart';
+import '../../core/services/recurring_confirmation_service.dart';
+import '../../core/services/onboarding_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../home/home_screen.dart';
 import '../transactions/transactions_screen.dart';
 import '../transactions/add_transaction_screen.dart';
 import '../budget/budget_screen.dart';
 import '../profile/profile_screen.dart';
+import '../onboarding/onboarding_tour_screen.dart';
 
 class MainShell extends StatefulWidget {
   final AuthService authService;
@@ -25,6 +29,8 @@ class MainShell extends StatefulWidget {
   final TagService tagService;
   final BackupService backupService;
   final BiometricService biometricService;
+  final ReminderService? reminderService;
+  final RecurringConfirmationService recurringConfirmationService;
 
   const MainShell({
     super.key,
@@ -37,6 +43,8 @@ class MainShell extends StatefulWidget {
     required this.tagService,
     required this.backupService,
     required this.biometricService,
+    this.reminderService,
+    required this.recurringConfirmationService,
   });
 
   @override
@@ -76,6 +84,29 @@ class _MainShellState extends State<MainShell>
 
     for (final sc in _scrollControllers) {
       sc.addListener(() => _onScroll(sc));
+    }
+
+    // Show onboarding tour on first launch
+    _checkAndShowOnboarding();
+  }
+
+  Future<void> _checkAndShowOnboarding() async {
+    // Wait for the first frame to render
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    if (!mounted) return;
+
+    final onboardingService = OnboardingService();
+    final hasSeenOnboarding = await onboardingService.hasSeenOnboarding();
+
+    if (!hasSeenOnboarding && mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const OnboardingTourScreen(),
+          fullscreenDialog: true,
+        ),
+      );
+      await onboardingService.setOnboardingCompleted();
     }
   }
 
@@ -139,6 +170,8 @@ class _MainShellState extends State<MainShell>
               accountService: widget.accountService,
               categoryService: widget.categoryService,
               tagService: widget.tagService,
+              reminderService: widget.reminderService,
+              recurringConfirmationService: widget.recurringConfirmationService,
               scrollController: _scrollControllers[0],
             ),
             0,

@@ -19,7 +19,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _dbName = 'spendfluxa.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 3;
 
   Database? _db;
 
@@ -35,6 +35,7 @@ class AppDatabase {
       path,
       version: _dbVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
     );
   }
@@ -77,6 +78,37 @@ class AppDatabase {
     await _seedCategories(db);
     await _seedCurrencies(db);
     await _seedAccounts(db);
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Add reminders table in version 2
+      await db.execute('''
+        CREATE TABLE reminders (
+          id                        TEXT PRIMARY KEY,
+          recurring_transaction_id  TEXT NOT NULL,
+          days_before               INTEGER NOT NULL DEFAULT 0,
+          time_hour                 INTEGER NOT NULL,
+          time_minute               INTEGER NOT NULL,
+          is_enabled                INTEGER NOT NULL DEFAULT 1,
+          FOREIGN KEY (recurring_transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+        )
+      ''');
+    }
+    if (oldVersion < 3) {
+      // Add recurring_confirmations table in version 3
+      await db.execute('''
+        CREATE TABLE recurring_confirmations (
+          id                        TEXT PRIMARY KEY,
+          recurring_transaction_id  TEXT NOT NULL,
+          due_date                  TEXT NOT NULL,
+          status                    TEXT NOT NULL CHECK(status IN ('pending','accepted','denied')),
+          confirmed_at              TEXT,
+          FOREIGN KEY (recurring_transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
+          UNIQUE(recurring_transaction_id, due_date)
+        )
+      ''');
+    }
   }
 
   Future<void> _createTables(Database db) async {
@@ -181,6 +213,32 @@ class AppDatabase {
         overall_limit    REAL,
         category_limits  TEXT NOT NULL DEFAULT '{}',
         UNIQUE(year, month)
+      )
+    ''');
+
+    // Reminders for recurring transactions
+    await db.execute('''
+      CREATE TABLE reminders (
+        id                        TEXT PRIMARY KEY,
+        recurring_transaction_id  TEXT NOT NULL,
+        days_before               INTEGER NOT NULL DEFAULT 0,
+        time_hour                 INTEGER NOT NULL,
+        time_minute               INTEGER NOT NULL,
+        is_enabled                INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY (recurring_transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+      )
+    ''');
+
+    // Recurring transaction confirmations
+    await db.execute('''
+      CREATE TABLE recurring_confirmations (
+        id                        TEXT PRIMARY KEY,
+        recurring_transaction_id  TEXT NOT NULL,
+        due_date                  TEXT NOT NULL,
+        status                    TEXT NOT NULL CHECK(status IN ('pending','accepted','denied')),
+        confirmed_at              TEXT,
+        FOREIGN KEY (recurring_transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
+        UNIQUE(recurring_transaction_id, due_date)
       )
     ''');
   }

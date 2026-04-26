@@ -6,8 +6,10 @@ import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
+import '../../core/services/reminder_service.dart';
 import '../../core/theme/app_colors.dart';
 import 'add_transaction_screen.dart';
+import '../reminders/reminder_config_screen.dart';
 
 class TransactionDetailScreen extends StatelessWidget {
   final Transaction transaction;
@@ -16,6 +18,7 @@ class TransactionDetailScreen extends StatelessWidget {
   final CurrencyService currencyService;
   final AccountService accountService;
   final TagService tagService;
+  final ReminderService? reminderService;
 
   const TransactionDetailScreen({
     super.key,
@@ -25,6 +28,7 @@ class TransactionDetailScreen extends StatelessWidget {
     required this.currencyService,
     required this.accountService,
     required this.tagService,
+    this.reminderService,
   });
 
   // ── Gradient colours matching AddTransactionScreen ────────────────────────
@@ -89,7 +93,7 @@ class TransactionDetailScreen extends StatelessWidget {
                 if (transaction.isEmi) const SizedBox(height: 14),
                 if (transaction.isRecurring ||
                     transaction.recurringParentId != null)
-                  _buildRecurringCard(),
+                  _buildRecurringCard(context),
                 if (transaction.isRecurring ||
                     transaction.recurringParentId != null)
                   const SizedBox(height: 14),
@@ -443,7 +447,10 @@ class TransactionDetailScreen extends StatelessWidget {
 
   // ── Recurring card ────────────────────────────────────────────────────────
 
-  Widget _buildRecurringCard() {
+  Widget _buildRecurringCard(BuildContext context) {
+    final isParent =
+        transaction.isRecurring && transaction.recurringParentId == null;
+
     return _Card(
       child: Column(
         children: [
@@ -466,7 +473,62 @@ class TransactionDetailScreen extends StatelessWidget {
               ).format(transaction.recurringEndDate!),
             ),
           ],
+          if (isParent && reminderService != null) ...[
+            _divider(),
+            InkWell(
+              onTap: () => _openReminderConfig(context),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF4ECDC4).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.notifications_rounded,
+                        color: Color(0xFF4ECDC4),
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Manage Reminders',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 14,
+                      color: AppColors.textLight,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Future<void> _openReminderConfig(BuildContext ctx) async {
+    if (reminderService == null) return;
+
+    await Navigator.of(ctx).push(
+      MaterialPageRoute(
+        builder: (context) => ReminderConfigScreen(
+          recurringTransaction: transaction,
+          reminderService: reminderService!,
+        ),
       ),
     );
   }
