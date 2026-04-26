@@ -515,7 +515,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                     const SizedBox(height: 16),
                     _buildEmiCard(),
                   ],
-                  if (!_shouldShowEmiOptions()) ...[
+                  if (!_shouldShowEmiOptions() || _isRecurring) ...[
                     const SizedBox(height: 16),
                     _buildRecurringCard(),
                   ],

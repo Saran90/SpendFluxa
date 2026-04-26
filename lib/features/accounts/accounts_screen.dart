@@ -333,7 +333,7 @@ class _AccountCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: account.type.color.withValues(alpha: 0.18),
+              color: account.color.withValues(alpha: 0.35),
               blurRadius: 14,
               offset: const Offset(0, 5),
             ),
@@ -347,7 +347,15 @@ class _AccountCard extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: account.type.gradientColors,
+                colors: [
+                  account.color,
+                  Color.fromARGB(
+                    account.color.a.toInt(),
+                    (account.color.r * 0.75).toInt(),
+                    (account.color.g * 0.75).toInt(),
+                    (account.color.b * 0.75).toInt(),
+                  ),
+                ],
               ),
             ),
             child: Column(
