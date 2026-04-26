@@ -148,6 +148,17 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       if (tx.emiDurationMonths != null) {
         _emiDurationMonths = tx.emiDurationMonths!;
       }
+
+      // Auto-expand category grid if the selected category is beyond
+      // the first 8 visible items (4 columns × 2 rows).
+      const maxVisible = 8;
+      final cats = tx.type == TransactionType.income
+          ? _incomeCategories
+          : _expenseCategories;
+      final idx = cats.indexOf(tx.category);
+      if (idx >= maxVisible) {
+        _isCategoryExpanded = true;
+      }
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
