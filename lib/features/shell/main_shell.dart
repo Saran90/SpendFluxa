@@ -137,6 +137,8 @@ class _MainShellState extends State<MainShell>
               currencyService: widget.currencyService,
               budgetService: widget.budgetService,
               accountService: widget.accountService,
+              categoryService: widget.categoryService,
+              tagService: widget.tagService,
               scrollController: _scrollControllers[0],
             ),
             0,
@@ -145,6 +147,9 @@ class _MainShellState extends State<MainShell>
             TransactionsScreen(
               transactionService: widget.transactionService,
               currencyService: widget.currencyService,
+              categoryService: widget.categoryService,
+              accountService: widget.accountService,
+              tagService: widget.tagService,
               scrollController: _scrollControllers[1],
             ),
             1,

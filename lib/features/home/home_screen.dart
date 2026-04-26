@@ -7,11 +7,14 @@ import '../../core/models/transaction.dart';
 import '../../core/services/account_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/budget_service.dart';
+import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../accounts/account_detail_screen.dart';
 import '../analytics/analytics_screen.dart';
+import '../transactions/transaction_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthService authService;
@@ -19,6 +22,8 @@ class HomeScreen extends StatefulWidget {
   final CurrencyService currencyService;
   final BudgetService budgetService;
   final AccountService accountService;
+  final CategoryService categoryService;
+  final TagService tagService;
   final ScrollController? scrollController;
 
   const HomeScreen({
@@ -28,6 +33,8 @@ class HomeScreen extends StatefulWidget {
     required this.currencyService,
     required this.budgetService,
     required this.accountService,
+    required this.categoryService,
+    required this.tagService,
     this.scrollController,
   });
 
@@ -369,8 +376,7 @@ class _HomeScreenState extends State<HomeScreen>
               ? Image.network(
                   user!.photoUrl!,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) =>
-                      _avatarFallback(user.displayName),
+                  errorBuilder: (_, _, _) => _avatarFallback(user.displayName),
                 )
               : _avatarFallback(user?.displayName ?? '?'),
         ),
@@ -453,6 +459,21 @@ class _HomeScreenState extends State<HomeScreen>
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _openTransactionDetail(Transaction tx) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TransactionDetailScreen(
+          transaction: tx,
+          transactionService: widget.transactionService,
+          categoryService: widget.categoryService,
+          currencyService: widget.currencyService,
+          accountService: widget.accountService,
+          tagService: widget.tagService,
         ),
       ),
     );
@@ -640,92 +661,99 @@ class _HomeScreenState extends State<HomeScreen>
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, isFirst ? 0 : 0, 20, isLast ? 0 : 0),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Category icon
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: tx.category.color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
+      child: GestureDetector(
+        onTap: () => _openTransactionDetail(tx),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              child: Icon(tx.category.icon, color: tx.category.color, size: 22),
-            ),
-            const SizedBox(width: 14),
+            ],
+          ),
+          child: Row(
+            children: [
+              // Category icon
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: tx.category.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  tx.category.icon,
+                  color: tx.category.color,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
 
-            // Title + category + date
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    tx.title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+              // Title + category + date
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tx.title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Text(
-                        tx.category.label,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Text(
+                          tx.category.label,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        width: 3,
-                        height: 3,
-                        decoration: const BoxDecoration(
-                          color: AppColors.textLight,
-                          shape: BoxShape.circle,
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 3,
+                          height: 3,
+                          decoration: const BoxDecoration(
+                            color: AppColors.textLight,
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        DateFormat('MMM d').format(tx.date),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
+                        const SizedBox(width: 6),
+                        Text(
+                          DateFormat('MMM d').format(tx.date),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // Amount
-            Text(
-              '$sign${fmt.format(tx.amount)}',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: amountColor,
+              // Amount
+              Text(
+                '$sign${fmt.format(tx.amount)}',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: amountColor,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

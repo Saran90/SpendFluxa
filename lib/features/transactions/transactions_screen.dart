@@ -2,19 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/transaction.dart';
+import '../../core/services/account_service.dart';
+import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
+import 'transaction_detail_screen.dart';
 
 class TransactionsScreen extends StatefulWidget {
   final TransactionService transactionService;
   final CurrencyService currencyService;
+  final CategoryService categoryService;
+  final AccountService accountService;
+  final TagService tagService;
   final ScrollController? scrollController;
 
   const TransactionsScreen({
     super.key,
     required this.transactionService,
     required this.currencyService,
+    required this.categoryService,
+    required this.accountService,
+    required this.tagService,
     this.scrollController,
   });
 
@@ -158,6 +168,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                 (ctx, i) => _TransactionTile(
                                   tx: grouped[dateKey]![i],
                                   fmt: fmt,
+                                  onTap: () => _openDetail(
+                                    context,
+                                    grouped[dateKey]![i],
+                                  ),
                                 ),
                                 childCount: grouped[dateKey]!.length,
                               ),
@@ -401,6 +415,23 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
+  // ── Navigation ────────────────────────────────────────────────────────────
+
+  void _openDetail(BuildContext context, Transaction tx) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TransactionDetailScreen(
+          transaction: tx,
+          transactionService: widget.transactionService,
+          categoryService: widget.categoryService,
+          currencyService: widget.currencyService,
+          accountService: widget.accountService,
+          tagService: widget.tagService,
+        ),
+      ),
+    );
+  }
+
   // ── Empty state ───────────────────────────────────────────────────────────
 
   Widget _buildEmptyState() {
@@ -438,8 +469,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 class _TransactionTile extends StatelessWidget {
   final Transaction tx;
   final NumberFormat fmt;
+  final VoidCallback onTap;
 
-  const _TransactionTile({required this.tx, required this.fmt});
+  const _TransactionTile({
+    required this.tx,
+    required this.fmt,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -450,109 +486,116 @@ class _TransactionTile extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Category icon
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: tx.category.color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              child: Icon(tx.category.icon, color: tx.category.color, size: 22),
-            ),
-            const SizedBox(width: 14),
+            ],
+          ),
+          child: Row(
+            children: [
+              // Category icon
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: tx.category.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  tx.category.icon,
+                  color: tx.category.color,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
 
-            // Title + meta
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    tx.title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+              // Title + meta
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tx.title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      // Category chip
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: tx.category.color.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          tx.category.label,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: tx.category.color,
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        // Category chip
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: tx.category.color.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            tx.category.label,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: tx.category.color,
+                            ),
                           ),
                         ),
-                      ),
-                      if (tx.note != null && tx.note!.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        const Icon(
-                          Icons.notes_rounded,
-                          size: 12,
-                          color: AppColors.textLight,
-                        ),
+                        if (tx.note != null && tx.note!.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          const Icon(
+                            Icons.notes_rounded,
+                            size: 12,
+                            color: AppColors.textLight,
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              // Amount + time
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '$sign${fmt.format(tx.amount)}',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: amountColor,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    DateFormat('h:mm a').format(tx.date),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textLight,
+                    ),
                   ),
                 ],
               ),
-            ),
-
-            const SizedBox(width: 10),
-
-            // Amount + time
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '$sign${fmt.format(tx.amount)}',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: amountColor,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  DateFormat('h:mm a').format(tx.date),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textLight,
-                  ),
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

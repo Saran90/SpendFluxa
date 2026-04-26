@@ -48,6 +48,7 @@ class AddTransactionScreen extends StatefulWidget {
   final CurrencyService currencyService;
   final AccountService accountService;
   final TagService tagService;
+  final Transaction? editing; // non-null = edit mode
 
   const AddTransactionScreen({
     super.key,
@@ -56,6 +57,7 @@ class AddTransactionScreen extends StatefulWidget {
     required this.currencyService,
     required this.accountService,
     required this.tagService,
+    this.editing,
   });
 
   @override
@@ -121,17 +123,60 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
+
+    // Pre-populate fields when editing an existing transaction
+    final tx = widget.editing;
+    if (tx != null) {
+      _type = tx.type;
+      _selectedCategory = tx.category;
+      _amountController.text = tx.amount.toStringAsFixed(2);
+      _titleController.text = tx.title;
+      _noteController.text = tx.note ?? '';
+      _selectedDate = tx.date;
+      _selectedTagIds.addAll(tx.tagIds);
+      _excludeFromExpense = tx.excludeFromExpense;
+      _isEmi = tx.isEmi;
+      _isRecurring = tx.isRecurring;
+      if (tx.recurringFrequency != null) {
+        _recurringFrequency = tx.recurringFrequency!;
+      }
+      _recurringEndDate = tx.recurringEndDate;
+      if (tx.emiInterestRate != null) {
+        _emiInterestRate = tx.emiInterestRate!;
+        _emiInterestController.text = tx.emiInterestRate!.toString();
+      }
+      if (tx.emiDurationMonths != null) {
+        _emiDurationMonths = tx.emiDurationMonths!;
+      }
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final accounts = widget.accountService.all;
       if (accounts.isNotEmpty) {
         setState(() {
-          _fromAccount = widget.accountService.defaultAccount ?? accounts.first;
-          _toAccount = accounts.length > 1
-              ? accounts.firstWhere(
-                  (a) => a.id != _fromAccount!.id,
-                  orElse: () => accounts.first,
-                )
-              : accounts.first;
+          if (tx != null) {
+            // Restore accounts from the edited transaction
+            _fromAccount = tx.accountId != null
+                ? accounts.where((a) => a.id == tx.accountId).firstOrNull
+                : widget.accountService.defaultAccount ?? accounts.first;
+            _toAccount = tx.toAccountId != null
+                ? accounts.where((a) => a.id == tx.toAccountId).firstOrNull
+                : accounts.length > 1
+                ? accounts.firstWhere(
+                    (a) => a.id != _fromAccount?.id,
+                    orElse: () => accounts.first,
+                  )
+                : accounts.first;
+          } else {
+            _fromAccount =
+                widget.accountService.defaultAccount ?? accounts.first;
+            _toAccount = accounts.length > 1
+                ? accounts.firstWhere(
+                    (a) => a.id != _fromAccount!.id,
+                    orElse: () => accounts.first,
+                  )
+                : accounts.first;
+          }
         });
       }
     });
@@ -197,26 +242,47 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       // Create recurring transactions
       await _createRecurringTransactions(title, amount);
     } else {
-      // Create regular transaction
-      await widget.transactionService.addTransaction(
-        Transaction(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          title: title,
-          amount: amount,
-          type: _type,
-          category: _selectedCategory,
-          date: _selectedDate,
-          note: _noteController.text.trim().isEmpty
-              ? null
-              : _noteController.text.trim(),
-          accountId: _fromAccount?.id,
-          toAccountId: _type == TransactionType.transfer
-              ? _toAccount?.id
-              : null,
-          tagIds: _selectedTagIds,
-          excludeFromExpense: _excludeFromExpense,
-        ),
-      );
+      // Create or update regular transaction
+      if (widget.editing != null) {
+        await widget.transactionService.updateTransaction(
+          widget.editing!.copyWith(
+            title: title,
+            amount: amount,
+            type: _type,
+            category: _selectedCategory,
+            date: _selectedDate,
+            note: _noteController.text.trim().isEmpty
+                ? null
+                : _noteController.text.trim(),
+            accountId: _fromAccount?.id,
+            toAccountId: _type == TransactionType.transfer
+                ? _toAccount?.id
+                : null,
+            tagIds: _selectedTagIds,
+            excludeFromExpense: _excludeFromExpense,
+          ),
+        );
+      } else {
+        await widget.transactionService.addTransaction(
+          Transaction(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            title: title,
+            amount: amount,
+            type: _type,
+            category: _selectedCategory,
+            date: _selectedDate,
+            note: _noteController.text.trim().isEmpty
+                ? null
+                : _noteController.text.trim(),
+            accountId: _fromAccount?.id,
+            toAccountId: _type == TransactionType.transfer
+                ? _toAccount?.id
+                : null,
+            tagIds: _selectedTagIds,
+            excludeFromExpense: _excludeFromExpense,
+          ),
+        );
+      }
     }
 
     setState(() => _isSaving = false);
@@ -499,11 +565,17 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                   Text(
-                    _type == TransactionType.transfer
-                        ? 'New Transfer'
-                        : _type == TransactionType.income
-                        ? 'New Income'
-                        : 'New Expense',
+                    widget.editing != null
+                        ? (_type == TransactionType.transfer
+                              ? 'Edit Transfer'
+                              : _type == TransactionType.income
+                              ? 'Edit Income'
+                              : 'Edit Expense')
+                        : (_type == TransactionType.transfer
+                              ? 'New Transfer'
+                              : _type == TransactionType.income
+                              ? 'New Income'
+                              : 'New Expense'),
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -2059,7 +2131,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          _type == TransactionType.transfer
+                          widget.editing != null
+                              ? 'Save Changes'
+                              : _type == TransactionType.transfer
                               ? 'Save Transfer'
                               : _type == TransactionType.income
                               ? 'Save Income'
