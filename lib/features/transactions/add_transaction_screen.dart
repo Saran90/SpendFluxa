@@ -96,6 +96,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   // Animate the header color when type changes
   late AnimationController _colorAnim;
 
+  // Delay autofocus until after the slide-up transition completes
+  bool _autoFocusReady = false;
+
   static const _expenseColors = [Color(0xFFFF6B6B), Color(0xFFE53935)];
   static const _incomeColors = [Color(0xFF2D9E6B), Color(0xFF1A7A50)];
   static const _transferColors = [Color(0xFF4ECDC4), Color(0xFF2D9E8F)];
@@ -161,35 +164,36 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       }
     }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final accounts = widget.accountService.all;
-      if (accounts.isNotEmpty) {
-        setState(() {
-          if (tx != null) {
-            // Restore accounts from the edited transaction
-            _fromAccount = tx.accountId != null
-                ? accounts.where((a) => a.id == tx.accountId).firstOrNull
-                : widget.accountService.defaultAccount ?? accounts.first;
-            _toAccount = tx.toAccountId != null
-                ? accounts.where((a) => a.id == tx.toAccountId).firstOrNull
-                : accounts.length > 1
-                ? accounts.firstWhere(
-                    (a) => a.id != _fromAccount?.id,
-                    orElse: () => accounts.first,
-                  )
-                : accounts.first;
-          } else {
-            _fromAccount =
-                widget.accountService.defaultAccount ?? accounts.first;
-            _toAccount = accounts.length > 1
-                ? accounts.firstWhere(
-                    (a) => a.id != _fromAccount!.id,
-                    orElse: () => accounts.first,
-                  )
-                : accounts.first;
-          }
-        });
+    // Initialize accounts synchronously — accountService.all is already loaded
+    final accounts = widget.accountService.all;
+    if (accounts.isNotEmpty) {
+      if (tx != null) {
+        _fromAccount = tx.accountId != null
+            ? accounts.where((a) => a.id == tx.accountId).firstOrNull
+            : widget.accountService.defaultAccount ?? accounts.first;
+        _toAccount = tx.toAccountId != null
+            ? accounts.where((a) => a.id == tx.toAccountId).firstOrNull
+            : accounts.length > 1
+            ? accounts.firstWhere(
+                (a) => a.id != _fromAccount?.id,
+                orElse: () => accounts.first,
+              )
+            : accounts.first;
+      } else {
+        _fromAccount = widget.accountService.defaultAccount ?? accounts.first;
+        _toAccount = accounts.length > 1
+            ? accounts.firstWhere(
+                (a) => a.id != _fromAccount!.id,
+                orElse: () => accounts.first,
+              )
+            : accounts.first;
       }
+    }
+
+    // Enable autofocus after the slide-up transition finishes (220ms)
+    // so the keyboard doesn't fight the animation
+    Future.delayed(const Duration(milliseconds: 240), () {
+      if (mounted) setState(() => _autoFocusReady = true);
     });
   }
 
@@ -578,7 +582,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                   Expanded(
                     child: TextFormField(
                       controller: _amountController,
-                      autofocus: true,
+                      autofocus: _autoFocusReady,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
