@@ -9,16 +9,19 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/budget_service.dart';
 import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/services/sms_transaction_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/services/recurring_confirmation_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../accounts/account_detail_screen.dart';
+import '../accounts/accounts_screen.dart';
 import '../analytics/analytics_screen.dart';
 import '../transactions/transaction_detail_screen.dart';
 import '../reminders/reminder_banner.dart';
 import '../reminders/recurring_confirmation_banner.dart';
+// import '../sms/sms_transaction_banner.dart'; // hidden for now
 
 class HomeScreen extends StatefulWidget {
   final AuthService authService;
@@ -30,6 +33,7 @@ class HomeScreen extends StatefulWidget {
   final TagService tagService;
   final ReminderService? reminderService;
   final RecurringConfirmationService recurringConfirmationService;
+  final SmsTransactionService smsTransactionService;
   final ScrollController? scrollController;
 
   const HomeScreen({
@@ -43,6 +47,7 @@ class HomeScreen extends StatefulWidget {
     required this.tagService,
     this.reminderService,
     required this.recurringConfirmationService,
+    required this.smsTransactionService,
     this.scrollController,
   });
 
@@ -145,6 +150,14 @@ class _HomeScreenState extends State<HomeScreen>
                       transactionService: widget.transactionService,
                     ),
                   ),
+                // SMS transaction banner — hidden for now
+                // SliverToBoxAdapter(
+                //   child: SmsTransactionBanner(
+                //     smsService: widget.smsTransactionService,
+                //     transactionService: widget.transactionService,
+                //     accountService: widget.accountService,
+                //   ),
+                // ),
                 SliverToBoxAdapter(
                   child: _buildSectionHeader('Recent Transactions', recent),
                 ),
@@ -1028,7 +1041,14 @@ class _HomeScreenState extends State<HomeScreen>
           if (accounts.isNotEmpty)
             GestureDetector(
               onTap: () {
-                // TODO: navigate to accounts screen
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AccountsScreen(
+                      accountService: widget.accountService,
+                      currencyService: widget.currencyService,
+                    ),
+                  ),
+                );
               },
               child: const Text(
                 'See all',
@@ -1056,9 +1076,9 @@ class _HomeScreenState extends State<HomeScreen>
     return GestureDetector(
       onTap: () => _openAccountDetail(account),
       child: Container(
-        width: 200,
+        width: 180,
         margin: EdgeInsets.only(right: isLast ? 0 : 12),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -1090,8 +1110,8 @@ class _HomeScreenState extends State<HomeScreen>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     color: account.color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
@@ -1099,24 +1119,28 @@ class _HomeScreenState extends State<HomeScreen>
                   child: Icon(
                     account.type.icon,
                     color: account.color,
-                    size: 22,
+                    size: 20,
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: account.color.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    account.type.label.split(' ').first,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: account.color,
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: account.color.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      account.type.label.split(' ').first,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: account.color,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
@@ -1130,7 +1154,7 @@ class _HomeScreenState extends State<HomeScreen>
                 Text(
                   account.name,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
                   ),
@@ -1169,21 +1193,24 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  fmt.format(account.balance),
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: isCreditCard ? AppColors.accent : account.color,
+                // FittedBox prevents overflow when the formatted amount is long
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    fmt.format(account.balance),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: isCreditCard ? AppColors.accent : account.color,
+                    ),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ],
         ),
-      ), // GestureDetector
+      ),
     );
   }
 

@@ -138,7 +138,6 @@ class TransactionService extends ChangeNotifier {
   }
 
   /// Applies (or reverses) the balance effect of [tx] on its linked account.
-  ///
   Future<void> _applyTransactionDelta(
     Transaction tx, {
     required bool reverse,
@@ -157,15 +156,28 @@ class TransactionService extends ChangeNotifier {
     );
 
     if (account.id.isEmpty) return;
-    if (account.type != AccountType.creditCard) return;
 
     double delta;
-    if (tx.type == TransactionType.expense) {
-      delta = tx.amount;
-    } else if (tx.type == TransactionType.income) {
-      delta = -tx.amount;
+
+    if (account.type == AccountType.creditCard) {
+      // Credit card: expense increases outstanding, income/payment decreases it
+      if (tx.type == TransactionType.expense) {
+        delta = tx.amount;
+      } else if (tx.type == TransactionType.income) {
+        delta = -tx.amount;
+      } else {
+        return; // transfers handled separately via toAccountId
+      }
     } else {
-      return; // transfers don't affect credit card outstanding
+      // Bank / wallet / cash / savings:
+      // income credits the account (+), expense debits it (-)
+      if (tx.type == TransactionType.income) {
+        delta = tx.amount;
+      } else if (tx.type == TransactionType.expense) {
+        delta = -tx.amount;
+      } else {
+        return; // transfers handled separately via toAccountId
+      }
     }
 
     if (reverse) delta = -delta;

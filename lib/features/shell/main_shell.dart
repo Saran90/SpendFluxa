@@ -1,11 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/account_service.dart';
+import '../../core/services/auto_backup_service.dart';
 import '../../core/services/backup_service.dart';
 import '../../core/services/biometric_service.dart';
 import '../../core/services/budget_service.dart';
 import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/services/sms_transaction_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/services/reminder_service.dart';
@@ -28,6 +31,7 @@ class MainShell extends StatefulWidget {
   final BudgetService budgetService;
   final TagService tagService;
   final BackupService backupService;
+  final AutoBackupService autoBackupService;
   final BiometricService biometricService;
   final ReminderService? reminderService;
   final RecurringConfirmationService recurringConfirmationService;
@@ -42,6 +46,7 @@ class MainShell extends StatefulWidget {
     required this.budgetService,
     required this.tagService,
     required this.backupService,
+    required this.autoBackupService,
     required this.biometricService,
     this.reminderService,
     required this.recurringConfirmationService,
@@ -88,6 +93,44 @@ class _MainShellState extends State<MainShell>
 
     // Show onboarding tour on first launch
     _checkAndShowOnboarding();
+
+    // Run auto-backup if it's due (silently, in background)
+    _runAutoBackupIfDue();
+  }
+
+  Future<void> _runAutoBackupIfDue() async {
+    // Small delay so the app finishes rendering before doing I/O
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+
+    // Build a temporary ProfileScreen state reference to reuse its logic
+    if (widget.autoBackupService.isDueNow()) {
+      final account = widget.authService.googleAccount;
+      if (account == null) return;
+
+      final targetId = widget.autoBackupService.targetFileId;
+      BackupResult result;
+      if (targetId != null) {
+        result = await widget.backupService.overwriteBackup(account, targetId);
+        if (result.success &&
+            result.fileId != null &&
+            result.fileId != targetId) {
+          await widget.autoBackupService.setTargetFileId(result.fileId!);
+        }
+      } else {
+        result = await widget.backupService.backupToGoogleDrive(account);
+        if (result.success && result.fileId != null) {
+          await widget.autoBackupService.setTargetFileId(result.fileId!);
+        }
+      }
+
+      if (result.success) {
+        await widget.autoBackupService.markBackedUpToday();
+        debugPrint('[AutoBackup] Daily backup completed successfully.');
+      } else {
+        debugPrint('[AutoBackup] Daily backup failed: ${result.error}');
+      }
+    }
   }
 
   Future<void> _checkAndShowOnboarding() async {
@@ -172,6 +215,7 @@ class _MainShellState extends State<MainShell>
               tagService: widget.tagService,
               reminderService: widget.reminderService,
               recurringConfirmationService: widget.recurringConfirmationService,
+              smsTransactionService: SmsTransactionService(),
               scrollController: _scrollControllers[0],
             ),
             0,
@@ -205,6 +249,7 @@ class _MainShellState extends State<MainShell>
               tagService: widget.tagService,
               transactionService: widget.transactionService,
               backupService: widget.backupService,
+              autoBackupService: widget.autoBackupService,
               budgetService: widget.budgetService,
               biometricService: widget.biometricService,
               scrollController: _scrollControllers[3],

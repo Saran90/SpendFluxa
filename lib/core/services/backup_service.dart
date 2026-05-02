@@ -284,6 +284,96 @@ class BackupService extends ChangeNotifier {
     }
   }
 
+  /// Overwrites an existing Drive file with the current database.
+  ///
+  /// Used by auto-backup to keep a single up-to-date file rather than
+  /// accumulating a new file every day.  If [fileId] no longer exists on
+  /// Drive, falls back to creating a new file and returns its ID.
+  Future<BackupResult> overwriteBackup(
+    GoogleSignInAccount account,
+    String fileId,
+  ) async {
+    if (_isRunning) {
+      return const BackupResult.failure('A backup is already in progress.');
+    }
+
+    _isRunning = true;
+    notifyListeners();
+
+    try {
+      final scopes = [drive.DriveApi.driveFileScope];
+      GoogleSignInClientAuthorization? auth = await account.authorizationClient
+          .authorizationForScopes(scopes);
+      auth ??= await account.authorizationClient.authorizeScopes(scopes);
+
+      final httpClient = _AuthenticatedClient(auth.accessToken);
+      final driveApi = drive.DriveApi(httpClient);
+
+      // Checkpoint WAL and close DB
+      final dbBeforeClose = await AppDatabase.instance.database;
+      await dbBeforeClose.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+      await AppDatabase.instance.close();
+
+      final dbDir = await getDatabasesPath();
+      final dbFile = File(p.join(dbDir, _dbName));
+      if (!await dbFile.exists()) {
+        return const BackupResult.failure('Database file not found.');
+      }
+
+      final fileBytes = await dbFile.readAsBytes();
+      final media = drive.Media(
+        Stream.value(fileBytes),
+        fileBytes.length,
+        contentType: 'application/octet-stream',
+      );
+
+      // Update the file content in-place (PATCH with new media)
+      final now = DateTime.now();
+      final stamp =
+          '${now.year.toString().padLeft(4, '0')}-'
+          '${now.month.toString().padLeft(2, '0')}-'
+          '${now.day.toString().padLeft(2, '0')}_'
+          '${now.hour.toString().padLeft(2, '0')}-'
+          '${now.minute.toString().padLeft(2, '0')}';
+      final newName = 'spendfluxa_backup_$stamp.db';
+
+      try {
+        final updated = await driveApi.files.update(
+          drive.File()..name = newName,
+          fileId,
+          uploadMedia: media,
+        );
+        final updatedId = updated.id ?? fileId;
+        await _savePrefs(updatedId);
+        debugPrint('[BackupService] Overwrote Drive file $updatedId');
+        return BackupResult.success(updatedId);
+      } catch (e) {
+        // File may have been deleted from Drive — fall back to creating new
+        debugPrint('[BackupService] overwrite failed ($e), creating new file');
+        final folderId = await _ensureFolder(driveApi);
+        final driveFile = drive.File()
+          ..name = newName
+          ..parents = [folderId]
+          ..mimeType = 'application/octet-stream';
+        final uploaded = await driveApi.files.create(
+          driveFile,
+          uploadMedia: media,
+        );
+        final newId = uploaded.id ?? '';
+        await _savePrefs(newId);
+        debugPrint('[BackupService] Created new file $newId as fallback');
+        return BackupResult.success(newId);
+      }
+    } catch (e, st) {
+      debugPrint('[BackupService] overwriteBackup error: $e\n$st');
+      return BackupResult.failure(e.toString());
+    } finally {
+      await AppDatabase.instance.database;
+      _isRunning = false;
+      notifyListeners();
+    }
+  }
+
   /// Returns the Drive folder ID for [_driveFolder], creating it if needed.
   Future<String> _ensureFolder(drive.DriveApi api) async {
     // Search for existing folder

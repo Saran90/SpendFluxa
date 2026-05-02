@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/account_service.dart';
+import '../../core/services/auto_backup_service.dart';
 import '../../core/services/backup_service.dart';
 import '../../core/services/biometric_service.dart';
 import '../../core/services/budget_service.dart';
@@ -11,7 +12,9 @@ import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
+import '../../core/services/sms_transaction_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../sms/sms_transaction_review_screen.dart';
 import '../accounts/accounts_screen.dart';
 import '../categories/categories_screen.dart';
 import '../tags/tags_screen.dart';
@@ -27,6 +30,7 @@ class ProfileScreen extends StatefulWidget {
   final TagService tagService;
   final TransactionService transactionService;
   final BackupService backupService;
+  final AutoBackupService autoBackupService;
   final BudgetService budgetService;
   final BiometricService biometricService;
   final ScrollController? scrollController;
@@ -40,6 +44,7 @@ class ProfileScreen extends StatefulWidget {
     required this.tagService,
     required this.transactionService,
     required this.backupService,
+    required this.autoBackupService,
     required this.budgetService,
     required this.biometricService,
     this.scrollController,
@@ -58,6 +63,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   TagService get tagService => widget.tagService;
   TransactionService get transactionService => widget.transactionService;
   BackupService get backupService => widget.backupService;
+  AutoBackupService get autoBackupService => widget.autoBackupService;
   BudgetService get budgetService => widget.budgetService;
   BiometricService get biometricService => widget.biometricService;
   ScrollController? get scrollController => widget.scrollController;
@@ -283,6 +289,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     // ── Data & Backup ─────────────────────────────────────
                     _groupDivider(),
+                    // SMS Transaction Tracking — hidden for now
+                    // _tile(
+                    //   icon: Icons.sms_rounded,
+                    //   label: 'SMS Transaction Tracking',
+                    //   color: const Color(0xFF4ECDC4),
+                    //   trailing: const Text(
+                    //     'Import from SMS',
+                    //     style: TextStyle(
+                    //       fontSize: 11,
+                    //       color: AppColors.textSecondary,
+                    //     ),
+                    //   ),
+                    //   onTap: () => _showSmsSettings(context),
+                    // ),
+                    // _divider(),
                     ListenableBuilder(
                       listenable: backupService,
                       builder: (context, _) {
@@ -318,6 +339,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               : () => _runBackup(context),
                         );
                       },
+                    ),
+                    _divider(),
+                    // ── Auto-Backup ───────────────────────────────────────
+                    ListenableBuilder(
+                      listenable: autoBackupService,
+                      builder: (context, _) => _tile(
+                        icon: Icons.schedule_rounded,
+                        label: 'Auto-Backup',
+                        color: const Color(0xFF7B61FF),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (autoBackupService.enabled)
+                              Text(
+                                autoBackupService.timeLabel,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            const SizedBox(width: 4),
+                            Switch.adaptive(
+                              value: autoBackupService.enabled,
+                              onChanged: (val) =>
+                                  _onAutoBackupToggle(context, val),
+                              activeThumbColor: const Color(0xFF7B61FF),
+                              activeTrackColor: const Color(
+                                0xFF7B61FF,
+                              ).withValues(alpha: 0.4),
+                            ),
+                          ],
+                        ),
+                        showChevron: false,
+                        onTap: autoBackupService.enabled
+                            ? () => _showAutoBackupSettings(context)
+                            : () => _onAutoBackupToggle(context, true),
+                      ),
                     ),
                     _divider(),
                     ListenableBuilder(
@@ -418,6 +476,257 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  // ── Auto-Backup ───────────────────────────────────────────────────────────
+
+  /// Called when the user flips the Auto-Backup toggle.
+  Future<void> _onAutoBackupToggle(BuildContext context, bool enable) async {
+    if (!enable) {
+      await autoBackupService.setEnabled(false);
+      await autoBackupService.clearTargetFileId();
+      return;
+    }
+
+    // Need a signed-in Google account to proceed
+    var account = authService.googleAccount;
+    if (account == null) {
+      final ok = await authService.signInWithGoogle();
+      if (!ok || !context.mounted) return;
+      account = authService.googleAccount;
+      if (account == null) return;
+    }
+
+    await autoBackupService.setEnabled(true);
+
+    if (!context.mounted) return;
+
+    // If we already have a stored target file ID, nothing more to do
+    if (autoBackupService.targetFileId != null) {
+      _showAutoBackupSettings(context);
+      return;
+    }
+
+    // Check Drive for existing backups — use the most recent one as target
+    _showAutoBackupProgress(context, message: 'Checking Google Drive…');
+    final existingFiles = await backupService.listBackups(account);
+
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // close progress dialog
+
+    if (!context.mounted) return;
+
+    if (existingFiles.isNotEmpty) {
+      // Let the user pick which existing backup to use as the recurring target
+      final chosen = await showModalBottomSheet<DriveBackupFile>(
+        context: context,
+        backgroundColor: Colors.white,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (_) => _AutoBackupFilePickerSheet(files: existingFiles),
+      );
+
+      if (!context.mounted) return;
+
+      if (chosen == null) {
+        // User dismissed the sheet (swiped down) — disable the toggle
+        await autoBackupService.setEnabled(false);
+        return;
+      }
+
+      if (chosen.id == '__new__') {
+        // User chose "Create a new backup file"
+        _showAutoBackupProgress(
+          context,
+          message: 'Creating new backup on Google Drive…',
+        );
+        final result = await backupService.backupToGoogleDrive(account);
+        if (context.mounted) Navigator.of(context).pop();
+        if (!context.mounted) return;
+
+        if (result.success && result.fileId != null) {
+          await autoBackupService.setTargetFileId(result.fileId!);
+          await autoBackupService.markBackedUpToday();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Auto-Backup enabled. New backup created on Google Drive.',
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFF7B61FF),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+          if (context.mounted) _showAutoBackupSettings(context);
+        } else {
+          await autoBackupService.setEnabled(false);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Could not create backup: ${result.error ?? 'Unknown error'}',
+                ),
+                backgroundColor: AppColors.accent,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            );
+          }
+        }
+        return;
+      }
+
+      await autoBackupService.setTargetFileId(chosen.id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Auto-Backup enabled. Daily backups will overwrite "${chosen.name}".',
+          ),
+          backgroundColor: const Color(0xFF7B61FF),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+      _showAutoBackupSettings(context);
+    } else {
+      // No backups on Drive at all — create the first one now
+      _showAutoBackupProgress(
+        context,
+        message: 'No existing backup found. Creating first backup…',
+      );
+      final result = await backupService.backupToGoogleDrive(account);
+      if (context.mounted) Navigator.of(context).pop(); // close progress dialog
+
+      if (!context.mounted) return;
+      if (result.success && result.fileId != null) {
+        await autoBackupService.setTargetFileId(result.fileId!);
+        await autoBackupService.markBackedUpToday();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Auto-Backup enabled. First backup created on Google Drive.',
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF7B61FF),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+        if (context.mounted) _showAutoBackupSettings(context);
+      } else {
+        // Backup failed — disable auto-backup
+        await autoBackupService.setEnabled(false);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Could not create backup: ${result.error ?? 'Unknown error'}',
+              ),
+              backgroundColor: AppColors.accent,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  void _showAutoBackupProgress(
+    BuildContext context, {
+    String message = 'Creating first backup on Google Drive…',
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        content: Row(
+          children: [
+            const CircularProgressIndicator(strokeWidth: 2),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Text(message, style: const TextStyle(fontSize: 14)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAutoBackupSettings(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) =>
+          _AutoBackupSettingsSheet(autoBackupService: autoBackupService),
+    );
+  }
+
+  /// Called on app launch (from MainShell) to run a due auto-backup silently.
+  Future<void> runAutoBackupIfDue() async {
+    if (!autoBackupService.isDueNow()) return;
+    final account = authService.googleAccount;
+    if (account == null) return;
+
+    final targetId = autoBackupService.targetFileId;
+    BackupResult result;
+    if (targetId != null) {
+      result = await backupService.overwriteBackup(account, targetId);
+      // If overwrite created a new file (fallback), update the target ID
+      if (result.success &&
+          result.fileId != null &&
+          result.fileId != targetId) {
+        await autoBackupService.setTargetFileId(result.fileId!);
+      }
+    } else {
+      result = await backupService.backupToGoogleDrive(account);
+      if (result.success && result.fileId != null) {
+        await autoBackupService.setTargetFileId(result.fileId!);
+      }
+    }
+
+    if (result.success) {
+      await autoBackupService.markBackedUpToday();
+      debugPrint('[AutoBackup] Daily backup completed.');
+    } else {
+      debugPrint('[AutoBackup] Daily backup failed: ${result.error}');
+    }
   }
 
   Future<void> _runBackup(BuildContext context) async {
@@ -662,6 +971,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+  // _showSmsSettings — hidden for now (SMS tracking feature disabled)
+  // void _showSmsSettings(BuildContext context) { ... }
 
   Widget _fallback(String name) {
     return Container(
@@ -1010,6 +1322,772 @@ class _RestorePickerSheetState extends State<_RestorePickerSheet> {
           ),
           const SizedBox(height: 16),
         ],
+      ),
+    );
+  }
+}
+
+// ── Auto-Backup file picker sheet ────────────────────────────────────────────
+
+/// Shown when the user enables Auto-Backup and existing Drive backups are found.
+/// Returns the chosen [DriveBackupFile], or null if dismissed.
+class _AutoBackupFilePickerSheet extends StatelessWidget {
+  final List<DriveBackupFile> files;
+
+  const _AutoBackupFilePickerSheet({required this.files});
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.55,
+      minChildSize: 0.35,
+      maxChildSize: 0.85,
+      expand: false,
+      builder: (_, scrollCtrl) => Column(
+        children: [
+          // ── Header ──────────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.textLight,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7B61FF).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.folder_open_rounded,
+                        color: Color(0xFF7B61FF),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Select Backup File',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Daily backups will overwrite the file you choose',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Divider(height: 1, color: Color(0xFFF0F2F5)),
+              ],
+            ),
+          ),
+
+          // ── File list ────────────────────────────────────────────────────
+          Expanded(
+            child: ListView.separated(
+              controller: scrollCtrl,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              itemCount: files.length + 1, // +1 for "Create new" option
+              separatorBuilder: (_, __) => const Divider(
+                height: 1,
+                indent: 56,
+                color: Color(0xFFF0F2F5),
+              ),
+              itemBuilder: (_, i) {
+                // Last item — "Create a new backup file" option
+                if (i == files.length) {
+                  return InkWell(
+                    onTap: () => Navigator.pop(
+                      context,
+                      const DriveBackupFile(id: '__new__', name: '__new__'),
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFF2D9E6B,
+                              ).withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.add_rounded,
+                              color: Color(0xFF2D9E6B),
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Create a new backup file',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF2D9E6B),
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'A fresh backup will be created on Drive',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                final file = files[i];
+                final dateStr = file.modifiedTime != null
+                    ? DateFormat(
+                        'MMM d, yyyy  HH:mm',
+                      ).format(file.modifiedTime!.toLocal())
+                    : '';
+
+                return InkWell(
+                  onTap: () => Navigator.pop(context, file),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF4285F4,
+                            ).withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.storage_rounded,
+                            color: Color(0xFF4285F4),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                file.name,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (dateStr.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  dateStr,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          color: AppColors.textLight,
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Auto-Backup settings sheet ────────────────────────────────────────────────
+
+class _AutoBackupSettingsSheet extends StatefulWidget {
+  final AutoBackupService autoBackupService;
+
+  const _AutoBackupSettingsSheet({required this.autoBackupService});
+
+  @override
+  State<_AutoBackupSettingsSheet> createState() =>
+      _AutoBackupSettingsSheetState();
+}
+
+class _AutoBackupSettingsSheetState extends State<_AutoBackupSettingsSheet> {
+  late int _hour;
+  late int _minute;
+
+  @override
+  void initState() {
+    super.initState();
+    _hour = widget.autoBackupService.hour;
+    _minute = widget.autoBackupService.minute;
+  }
+
+  String get _timeLabel {
+    final h = _hour % 12 == 0 ? 12 : _hour % 12;
+    final m = _minute.toString().padLeft(2, '0');
+    final period = _hour < 12 ? 'AM' : 'PM';
+    return '$h:$m $period';
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: _hour, minute: _minute),
+      helpText: 'Set daily backup time',
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        _hour = picked.hour;
+        _minute = picked.minute;
+      });
+      await widget.autoBackupService.setTime(_hour, _minute);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle
+            const SizedBox(height: 12),
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textLight,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Title
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.schedule_rounded,
+                    color: Color(0xFF7B61FF),
+                    size: 22,
+                  ),
+                  SizedBox(width: 10),
+                  Text(
+                    'Auto-Backup Settings',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                'The database will be backed up to Google Drive once per day '
+                'at or after the selected time when you open the app.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Time picker row
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: InkWell(
+                onTap: _pickTime,
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7B61FF).withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFF7B61FF).withValues(alpha: 0.25),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: const Color(
+                            0xFF7B61FF,
+                          ).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.access_time_rounded,
+                          color: Color(0xFF7B61FF),
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Daily backup time',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _timeLabel,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF7B61FF),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.edit_rounded,
+                        color: Color(0xFF7B61FF),
+                        size: 18,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Info note
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4285F4).withValues(alpha: 0.07),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 16,
+                      color: Color(0xFF4285F4),
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Each daily backup overwrites the same file on Google Drive, '
+                        'keeping your storage tidy. You can always do a manual backup '
+                        'to create a separate snapshot.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Done button
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7B61FF),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Done',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── SMS Settings bottom sheet ─────────────────────────────────────────────────
+
+class _SmsSettingsSheet extends StatelessWidget {
+  final SmsTransactionService smsService;
+  final TransactionService transactionService;
+  final AccountService accountService;
+  final ScrollController scrollController;
+
+  const _SmsSettingsSheet({
+    required this.smsService,
+    required this.transactionService,
+    required this.accountService,
+    required this.scrollController,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.textLight,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'SMS Transaction Tracking',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              'Automatically detect and import transactions from bank SMS messages.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: ListView(
+              controller: scrollController,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              children: [
+                // Permission status card
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF4ECDC4).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.sms_outlined,
+                          color: Color(0xFF4ECDC4),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'SMS Permission',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Required to read bank messages',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          await smsService.requestSmsPermission();
+                          if (context.mounted) {
+                            (context as Element).markNeedsBuild();
+                          }
+                        },
+                        child: const Text('Grant'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Enable/Disable toggle
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF4285F4).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.toggle_on_rounded,
+                          color: Color(0xFF4285F4),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Auto-Scan',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Scan for new transactions on app open',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: smsService.isSmsTrackingEnabled,
+                        onChanged: (value) async {
+                          await smsService.setSmsTrackingEnabled(value);
+                          (context as Element).markNeedsBuild();
+                        },
+                        activeColor: const Color(0xFF4ECDC4),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Scan now button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      await smsService.scanSmsMessages();
+                      if (context.mounted) {
+                        // Navigate to review screen
+                        Navigator.pop(context);
+                        _showSmsReviewScreen(context);
+                      }
+                    },
+                    icon: const Icon(Icons.search, color: Colors.white),
+                    label: const Text(
+                      'Scan for Transactions',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF4ECDC4),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Pending transactions count
+                if (smsService.pendingCount > 0)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF6B6B).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.pending_actions_rounded,
+                          color: Color(0xFFFF6B6B),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '${smsService.pendingCount} transactions pending review',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFFFF6B6B),
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _showSmsReviewScreen(context);
+                          },
+                          child: const Text('Review'),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 24),
+                // Privacy note
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2D9E6B).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.privacy_tip_outlined,
+                        color: Color(0xFF2D9E6B),
+                        size: 20,
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Your SMS data stays on your device. We never upload or store your messages.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 32),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSmsReviewScreen(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SmsTransactionReviewScreen(
+          smsService: smsService,
+          transactionService: transactionService,
+          accountService: accountService,
+        ),
       ),
     );
   }

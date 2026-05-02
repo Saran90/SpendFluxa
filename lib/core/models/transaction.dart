@@ -209,6 +209,11 @@ class Transaction {
   final String?
   recurringParentId; // For instances, links to the recurring template
 
+  // SMS import fields
+  final String? source; // 'manual', 'sms', 'bank_api'
+  final String? smsMessageId; // Original SMS message ID for deduplication
+  final String? bankName; // Bank that sent the SMS
+
   const Transaction({
     required this.id,
     required this.title,
@@ -230,6 +235,9 @@ class Transaction {
     this.recurringFrequency,
     this.recurringEndDate,
     this.recurringParentId,
+    this.source,
+    this.smsMessageId,
+    this.bankName,
   });
 
   bool get isExpense => type == TransactionType.expense;
@@ -256,6 +264,9 @@ class Transaction {
     String? recurringFrequency,
     DateTime? recurringEndDate,
     String? recurringParentId,
+    String? source,
+    String? smsMessageId,
+    String? bankName,
   }) {
     return Transaction(
       id: id,
@@ -278,6 +289,9 @@ class Transaction {
       recurringFrequency: recurringFrequency ?? this.recurringFrequency,
       recurringEndDate: recurringEndDate ?? this.recurringEndDate,
       recurringParentId: recurringParentId ?? this.recurringParentId,
+      source: source ?? this.source,
+      smsMessageId: smsMessageId ?? this.smsMessageId,
+      bankName: bankName ?? this.bankName,
     );
   }
 
@@ -302,6 +316,9 @@ class Transaction {
     'recurringFrequency': recurringFrequency,
     'recurringEndDate': recurringEndDate?.toIso8601String(),
     'recurringParentId': recurringParentId,
+    'source': source,
+    'smsMessageId': smsMessageId,
+    'bankName': bankName,
   };
 
   factory Transaction.fromMap(Map<String, dynamic> map) => Transaction(
@@ -339,5 +356,8 @@ class Transaction {
         ? DateTime.parse(map['recurringEndDate'] as String)
         : null,
     recurringParentId: map['recurringParentId'] as String?,
+    source: map['source'] as String?,
+    smsMessageId: map['smsMessageId'] as String?,
+    bankName: map['bankName'] as String?,
   );
 }

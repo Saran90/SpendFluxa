@@ -19,7 +19,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _dbName = 'spendfluxa.db';
-  static const _dbVersion = 3;
+  static const _dbVersion = 4;
 
   Database? _db;
 
@@ -108,6 +108,14 @@ class AppDatabase {
           UNIQUE(recurring_transaction_id, due_date)
         )
       ''');
+    }
+    if (oldVersion < 4) {
+      // Add SMS tracking fields to transactions table in version 4
+      await db.execute('ALTER TABLE transactions ADD COLUMN source TEXT');
+      await db.execute(
+        'ALTER TABLE transactions ADD COLUMN sms_message_id TEXT',
+      );
+      await db.execute('ALTER TABLE transactions ADD COLUMN bank_name TEXT');
     }
   }
 
@@ -199,6 +207,9 @@ class AppDatabase {
         recurring_frequency   TEXT,
         recurring_end_date    TEXT,
         recurring_parent_id   TEXT,
+        source                TEXT,
+        sms_message_id        TEXT,
+        bank_name             TEXT,
         FOREIGN KEY (account_id)    REFERENCES accounts(id) ON DELETE SET NULL,
         FOREIGN KEY (to_account_id) REFERENCES accounts(id) ON DELETE SET NULL
       )

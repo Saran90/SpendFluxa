@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 import 'core/database/app_database.dart';
 import 'core/services/account_service.dart';
 import 'core/services/auth_service.dart';
+import 'core/services/auto_backup_service.dart';
 import 'core/services/backup_service.dart';
 import 'core/services/biometric_service.dart';
 import 'core/services/budget_service.dart';
 import 'core/services/category_service.dart';
 import 'core/services/currency_service.dart';
+// import 'core/services/sms_transaction_service.dart'; // hidden for now
 import 'core/services/tag_service.dart';
 import 'core/services/transaction_service.dart';
 import 'core/services/notification_service.dart';
@@ -30,6 +32,9 @@ Future<void> main() async {
   // Initialize notification service
   await NotificationService().initialize();
 
+  // SMS tracking — disabled for now
+  // await SmsTransactionService().initialize();
+
   runApp(const SpendFluxaApp());
 }
 
@@ -51,6 +56,7 @@ class _SpendFluxaAppState extends State<SpendFluxaApp> {
   final BudgetService _budgetService = BudgetService();
   final TagService _tagService = TagService();
   final BackupService _backupService = BackupService();
+  final AutoBackupService _autoBackupService = AutoBackupService();
   final BiometricService _biometricService = BiometricService();
   late final ReminderService _reminderService = ReminderService(
     notificationService: NotificationService(),
@@ -68,6 +74,7 @@ class _SpendFluxaAppState extends State<SpendFluxaApp> {
     _budgetService.dispose();
     _tagService.dispose();
     _backupService.dispose();
+    _autoBackupService.dispose();
     _biometricService.dispose();
     _reminderService.dispose();
     _recurringConfirmationService.dispose();
@@ -113,6 +120,7 @@ class _SpendFluxaAppState extends State<SpendFluxaApp> {
           budgetService: _budgetService,
           tagService: _tagService,
           backupService: _backupService,
+          autoBackupService: _autoBackupService,
           biometricService: _biometricService,
           reminderService: _reminderService,
           recurringConfirmationService: _recurringConfirmationService,
