@@ -52,3 +52,14 @@ ios/Runner/GoogleService-Info.plist
 android/key.properties
 android/app/*.jks
 android/app/*.keystore
+
+# Temporary test scripts
+test_*.dart
+
+# Auto-generated feature documentation
+*_FEATURE.md
+*_SUMMARY.md
+*_REFERENCE.md
+*_GUIDE.md
+*_FIX.md
+CREDIT_CARD_SMS_TRACKING.md
