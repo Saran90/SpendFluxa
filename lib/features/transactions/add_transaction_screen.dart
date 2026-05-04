@@ -1,8 +1,9 @@
-import 'dart:math';
+﻿import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/account.dart';
+import '../../core/models/custom_category.dart';
 import '../../core/models/transaction.dart';
 import '../../core/services/account_service.dart';
 import '../../core/services/category_service.dart';
@@ -12,6 +13,32 @@ import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../accounts/add_account_sheet.dart';
 import '../tags/add_tag_sheet.dart';
+
+// Wraps either a built-in TransactionCategory or a user CustomCategory so the
+// grid can render both with the same code.
+class _CategoryItem {
+  final TransactionCategory? builtin;
+  final CustomCategory? custom;
+
+  const _CategoryItem.builtin(TransactionCategory c)
+    : builtin = c,
+      custom = null;
+  const _CategoryItem.custom(CustomCategory c) : custom = c, builtin = null;
+
+  String get label => builtin?.label ?? custom!.label;
+  IconData get icon => builtin?.icon ?? custom!.icon;
+  Color get color => builtin?.color ?? custom!.color;
+
+  bool matches(_CategoryItem other) {
+    if (builtin != null && other.builtin != null) {
+      return builtin == other.builtin;
+    }
+    if (custom != null && other.custom != null) {
+      return custom!.id == other.custom!.id;
+    }
+    return false;
+  }
+}
 
 const _expenseCategories = [
   TransactionCategory.food,
@@ -74,6 +101,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   final _formKey = GlobalKey<FormState>();
 
   TransactionCategory _selectedCategory = TransactionCategory.food;
+  _CategoryItem _selectedItem = const _CategoryItem.builtin(
+    TransactionCategory.food,
+  );
   DateTime _selectedDate = DateTime.now();
   Account? _fromAccount;
   Account? _toAccount;
@@ -87,6 +117,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   int _emiDurationMonths = 3;
   final _emiInterestController = TextEditingController();
   bool _excludeFromExpense = false;
+  bool _isMonthly = true; // default ON — counts toward monthly totals
 
   // Recurring fields
   bool _isRecurring = false;
@@ -96,8 +127,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   // Animate the header color when type changes
   late AnimationController _colorAnim;
 
-  // Delay autofocus until after the slide-up transition completes
-  bool _autoFocusReady = false;
+  // Focus node for the amount field — requested once after the transition
+  final FocusNode _amountFocus = FocusNode();
 
   static const _expenseColors = [Color(0xFFFF6B6B), Color(0xFFE53935)];
   static const _incomeColors = [Color(0xFF2D9E6B), Color(0xFF1A7A50)];
@@ -116,8 +147,22 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
 
   Color get _typeColor => _currentGradient[0];
 
-  List<TransactionCategory> get _categories =>
-      _type == TransactionType.income ? _incomeCategories : _expenseCategories;
+  /// Merged list of built-in + custom categories for the current transaction type.
+  List<_CategoryItem> get _allCategoryItems {
+    final builtins =
+        (_type == TransactionType.income
+                ? _incomeCategories
+                : _expenseCategories)
+            .map((c) => _CategoryItem.builtin(c))
+            .toList();
+    final customs =
+        (_type == TransactionType.income
+                ? widget.categoryService.incomeCategories
+                : widget.categoryService.expenseCategories)
+            .map((c) => _CategoryItem.custom(c))
+            .toList();
+    return [...builtins, ...customs];
+  }
 
   @override
   void initState() {
@@ -132,12 +177,14 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     if (tx != null) {
       _type = tx.type;
       _selectedCategory = tx.category;
+      _selectedItem = _CategoryItem.builtin(tx.category);
       _amountController.text = tx.amount.toStringAsFixed(2);
       _titleController.text = tx.title;
       _noteController.text = tx.note ?? '';
       _selectedDate = tx.date;
       _selectedTagIds.addAll(tx.tagIds);
       _excludeFromExpense = tx.excludeFromExpense;
+      _isMonthly = tx.isMonthly;
       _isEmi = tx.isEmi;
       _isRecurring = tx.isRecurring;
       if (tx.recurringFrequency != null) {
@@ -153,7 +200,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       }
 
       // Auto-expand category grid if the selected category is beyond
-      // the first 8 visible items (4 columns × 2 rows).
+      // the first 8 visible items (4 columns ├ù 2 rows).
       const maxVisible = 8;
       final cats = tx.type == TransactionType.income
           ? _incomeCategories
@@ -164,7 +211,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       }
     }
 
-    // Initialize accounts synchronously — accountService.all is already loaded
+    // Initialize accounts synchronously ΓÇö accountService.all is already loaded
     final accounts = widget.accountService.all;
     if (accounts.isNotEmpty) {
       if (tx != null) {
@@ -190,16 +237,16 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       }
     }
 
-    // Enable autofocus after the slide-up transition finishes (220ms)
-    // so the keyboard doesn't fight the animation
+    // Request focus on the amount field once the slide-up transition finishes
     Future.delayed(const Duration(milliseconds: 240), () {
-      if (mounted) setState(() => _autoFocusReady = true);
+      if (mounted) _amountFocus.requestFocus();
     });
   }
 
   @override
   void dispose() {
     _colorAnim.dispose();
+    _amountFocus.dispose();
     _amountController.dispose();
     _titleController.dispose();
     _noteController.dispose();
@@ -209,12 +256,14 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
 
   void _setType(TransactionType t) {
     if (_type == t) return;
+    final defaultCat = t == TransactionType.income
+        ? TransactionCategory.salary
+        : TransactionCategory.food;
     setState(() {
       _type = t;
-      _selectedCategory = t == TransactionType.income
-          ? TransactionCategory.salary
-          : TransactionCategory.food;
-      _isCategoryExpanded = false; // Reset expansion when type changes
+      _selectedCategory = defaultCat;
+      _selectedItem = _CategoryItem.builtin(defaultCat);
+      _isCategoryExpanded = false;
     });
   }
 
@@ -276,6 +325,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
             recurringFrequency: _recurringFrequency,
             recurringEndDate: _recurringEndDate,
             excludeFromExpense: _excludeFromExpense,
+            isMonthly: _isMonthly,
           ),
         );
       } else {
@@ -301,6 +351,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                 : null,
             tagIds: _selectedTagIds,
             excludeFromExpense: _excludeFromExpense,
+            isMonthly: _isMonthly,
           ),
         );
       } else {
@@ -321,6 +372,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                 : null,
             tagIds: _selectedTagIds,
             excludeFromExpense: _excludeFromExpense,
+            isMonthly: _isMonthly,
           ),
         );
       }
@@ -353,6 +405,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
         recurringFrequency: _recurringFrequency,
         recurringEndDate: _recurringEndDate,
         excludeFromExpense: _excludeFromExpense,
+        isMonthly: _isMonthly,
       ),
     );
   }
@@ -445,7 +498,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     if (picked != null) setState(() => _selectedDate = picked);
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Build ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   @override
   Widget build(BuildContext context) {
@@ -506,7 +559,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     );
   }
 
-  // ── Hero: gradient header with amount + type switcher ─────────────────────
+  // ΓöÇΓöÇ Hero: gradient header with amount + type switcher ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   Widget _buildHero() {
     return AnimatedContainer(
@@ -563,7 +616,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
               ),
             ),
 
-            // Amount — the hero element
+            // Amount ΓÇö the hero element
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 4),
               child: Row(
@@ -582,7 +635,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                   Expanded(
                     child: TextFormField(
                       controller: _amountController,
-                      autofocus: _autoFocusReady,
+                      focusNode: _amountFocus,
+                      autofocus: false,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
@@ -632,7 +686,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
 
             const SizedBox(height: 20),
 
-            // Type switcher — 3 pill buttons
+            // Type switcher ΓÇö 3 pill buttons
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
               child: Container(
@@ -682,147 +736,161 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     );
   }
 
-  // ── Category grid ─────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Category grid ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   Widget _buildCategoryGrid() {
-    const itemsPerRow = 4;
-    const rowsToShow = 2;
-    final maxItemsToShow = itemsPerRow * rowsToShow; // 8 items
-    final hasMore =
-        _categories.length >
-        maxItemsToShow; // Only show button if more than 8 items
-    final displayedCategories = _isCategoryExpanded
-        ? _categories
-        : _categories.take(maxItemsToShow).toList();
+    const maxItemsToShow = 8; // 4 columns x 2 rows
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _label('Category'),
-        const SizedBox(height: 8),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-          child: GridView.builder(
-            shrinkWrap: true,
-            padding: const EdgeInsets.all(0),
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 0.85,
-            ),
-            itemCount: displayedCategories.length,
-            itemBuilder: (_, i) {
-              final cat = displayedCategories[i];
-              final sel = _selectedCategory == cat;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedCategory = cat),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  decoration: BoxDecoration(
-                    color: sel
-                        ? cat.color.withValues(alpha: 0.12)
-                        : Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: sel ? cat.color : Colors.transparent,
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: sel ? 0.0 : 0.04),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: cat.color.withValues(alpha: sel ? 0.2 : 0.1),
-                          borderRadius: BorderRadius.circular(11),
+    return ListenableBuilder(
+      listenable: widget.categoryService,
+      builder: (context, _) {
+        final allItems = _allCategoryItems;
+        final hasMore = allItems.length > maxItemsToShow;
+        final displayed = _isCategoryExpanded
+            ? allItems
+            : allItems.take(maxItemsToShow).toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _label('Category'),
+            const SizedBox(height: 8),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              child: GridView.builder(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  childAspectRatio: 0.85,
+                ),
+                itemCount: displayed.length,
+                itemBuilder: (_, i) {
+                  final item = displayed[i];
+                  final sel = _selectedItem.matches(item);
+                  return GestureDetector(
+                    onTap: () => setState(() {
+                      _selectedItem = item;
+                      _selectedCategory =
+                          item.builtin ?? TransactionCategory.other;
+                    }),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      decoration: BoxDecoration(
+                        color: sel
+                            ? item.color.withValues(alpha: 0.12)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: sel ? item.color : Colors.transparent,
+                          width: 1.5,
                         ),
-                        child: Icon(cat.icon, color: cat.color, size: 19),
-                      ),
-                      const SizedBox(height: 6),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Text(
-                          cat.label,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: sel ? cat.color : AppColors.textSecondary,
-                            height: 1.2,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                              alpha: sel ? 0.0 : 0.04,
+                            ),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
                           ),
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-        if (hasMore) ...[
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: GestureDetector(
-              onTap: () =>
-                  setState(() => _isCategoryExpanded = !_isCategoryExpanded),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: _typeColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: _typeColor.withValues(alpha: 0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _isCategoryExpanded ? 'Show Less' : 'Show More',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: _typeColor,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: item.color.withValues(
+                                alpha: sel ? 0.2 : 0.1,
+                              ),
+                              borderRadius: BorderRadius.circular(11),
+                            ),
+                            child: Icon(item.icon, color: item.color, size: 19),
+                          ),
+                          const SizedBox(height: 6),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(
+                              item.label,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: sel
+                                    ? item.color
+                                    : AppColors.textSecondary,
+                                height: 1.2,
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      _isCategoryExpanded
-                          ? Icons.expand_less_rounded
-                          : Icons.expand_more_rounded,
-                      size: 18,
-                      color: _typeColor,
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
-          ),
-        ],
-      ],
+            if (hasMore) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: GestureDetector(
+                  onTap: () => setState(
+                    () => _isCategoryExpanded = !_isCategoryExpanded,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _typeColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _typeColor.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _isCategoryExpanded ? 'Show Less' : 'Show More',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: _typeColor,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          _isCategoryExpanded
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
+                          size: 18,
+                          color: _typeColor,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 
-  // ── Date card ─────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Date card ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   Widget _buildDateCard() {
     final isToday = _isSameDay(_selectedDate, DateTime.now());
@@ -903,7 +971,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     );
   }
 
-  // ── Details card: title + note ────────────────────────────────────────────
+  // ΓöÇΓöÇ Details card: title + note ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   Widget _buildDetailsCard() {
     return Container(
@@ -968,6 +1036,60 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
               ),
             ),
           ),
+          // Monthly transaction toggle (income + expense, not transfer)
+          if (_type != TransactionType.transfer) ...[
+            _divider(),
+            InkWell(
+              onTap: () => setState(() => _isMonthly = !_isMonthly),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.calendar_month_rounded,
+                      size: 18,
+                      color: _isMonthly ? _typeColor : AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Monthly transaction',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _isMonthly
+                                ? 'Counts toward monthly income/expense totals'
+                                : 'General — not included in monthly totals',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: _isMonthly,
+                      onChanged: (val) => setState(() => _isMonthly = val),
+                      activeTrackColor: _typeColor.withValues(alpha: 0.5),
+                      activeThumbColor: _typeColor,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           // Exclude from expense toggle (only for expense transactions)
           if (_type == TransactionType.expense) ...[
             _divider(),
@@ -1030,7 +1152,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     );
   }
 
-  // ── Tags card ─────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Tags card ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   Widget _buildTagsCard() {
     return ListenableBuilder(
@@ -1231,12 +1353,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     // Rebuild will happen automatically via ListenableBuilder
   }
 
-  // ── Account card ──────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Account card ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   Widget _buildAccountCard() {
     final accounts = widget.accountService.all;
 
-    // No accounts yet — show a prompt to create one
+    // No accounts yet ΓÇö show a prompt to create one
     if (accounts.isEmpty) {
       return GestureDetector(
         onTap: () async {
@@ -1486,7 +1608,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     if (picked != null) onSelected(picked);
   }
 
-  // ── EMI Card ──────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ EMI Card ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   bool _shouldShowEmiOptions() {
     // Only show EMI options for expense transactions with credit card account
@@ -1790,7 +1912,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     return numerator / denominator;
   }
 
-  // ── Recurring Card ────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Recurring Card ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   Widget _buildRecurringCard() {
     return Container(
@@ -2045,7 +2167,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     if (picked != null) setState(() => _recurringEndDate = picked);
   }
 
-  // ── Bottom save bar ───────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Bottom save bar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   Widget _buildBottomBar() {
     return Container(
@@ -2131,7 +2253,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
   Widget _label(String text) => Text(
     text.toUpperCase(),
@@ -2178,9 +2300,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       a.year == b.year && a.month == b.month && a.day == b.day;
 }
 
-// ── Account picker bottom sheet ───────────────────────────────────────────────
+// ΓöÇΓöÇ Account picker bottom sheet ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-// ── Account picker bottom sheet ───────────────────────────────────────────────
+// ΓöÇΓöÇ Account picker bottom sheet ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 class _AccountPickerSheet extends StatefulWidget {
   final List<Account> accounts;
@@ -2260,7 +2382,7 @@ class _AccountPickerSheetState extends State<_AccountPickerSheet> {
             itemCount: accounts.length + 1, // +1 for "New Account"
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (_, i) {
-              // Last item → "New Account" button
+              // Last item ΓåÆ "New Account" button
               if (i == accounts.length) {
                 return InkWell(
                   onTap: _createAccount,

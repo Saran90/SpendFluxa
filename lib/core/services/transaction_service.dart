@@ -29,16 +29,16 @@ class TransactionService extends ChangeNotifier {
     }).toList()..sort((a, b) => b.date.compareTo(a.date));
   }
 
-  /// Total income for the given month/year.
-  double incomeForMonth(int year, int month) => transactionsForMonth(
-    year,
-    month,
-  ).where((t) => t.isIncome).fold(0.0, (sum, t) => sum + t.amount);
+  /// Total income for the given month/year — only monthly transactions.
+  double incomeForMonth(int year, int month) =>
+      transactionsForMonth(year, month)
+          .where((t) => t.isIncome && t.isMonthly)
+          .fold(0.0, (sum, t) => sum + t.amount);
 
-  /// Total expenses for the given month/year.
+  /// Total expenses for the given month/year — only monthly transactions.
   double expensesForMonth(int year, int month) =>
       transactionsForMonth(year, month)
-          .where((t) => t.isExpense && !t.excludeFromExpense)
+          .where((t) => t.isExpense && !t.excludeFromExpense && t.isMonthly)
           .fold(0.0, (sum, t) => sum + t.amount);
 
   /// Net balance (income - expenses) for the given month/year.
@@ -240,6 +240,7 @@ class TransactionService extends ChangeNotifier {
     'emi_monthly_amount': t.emiMonthlyAmount,
     'parent_transaction_id': t.parentTransactionId,
     'exclude_from_expense': t.excludeFromExpense ? 1 : 0,
+    'is_monthly': t.isMonthly ? 1 : 0,
     'is_recurring': t.isRecurring ? 1 : 0,
     'recurring_frequency': t.recurringFrequency,
     'recurring_end_date': t.recurringEndDate?.toIso8601String(),
@@ -275,6 +276,7 @@ class TransactionService extends ChangeNotifier {
         : null,
     parentTransactionId: row['parent_transaction_id'] as String?,
     excludeFromExpense: (row['exclude_from_expense'] as int) == 1,
+    isMonthly: (row['is_monthly'] as int? ?? 1) == 1,
     isRecurring: (row['is_recurring'] as int) == 1,
     recurringFrequency: row['recurring_frequency'] as String?,
     recurringEndDate: row['recurring_end_date'] != null

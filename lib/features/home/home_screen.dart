@@ -776,6 +776,29 @@ class _HomeScreenState extends State<HomeScreen>
                             color: AppColors.textSecondary,
                           ),
                         ),
+                        if (!tx.isMonthly) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFF95A5A6,
+                              ).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'General',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF95A5A6),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],

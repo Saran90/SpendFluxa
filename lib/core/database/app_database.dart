@@ -19,7 +19,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _dbName = 'spendfluxa.db';
-  static const _dbVersion = 4;
+  static const _dbVersion = 5;
 
   Database? _db;
 
@@ -117,6 +117,13 @@ class AppDatabase {
       );
       await db.execute('ALTER TABLE transactions ADD COLUMN bank_name TEXT');
     }
+    if (oldVersion < 5) {
+      // Add is_monthly flag — default 1 (true) so existing transactions
+      // continue to count toward monthly totals
+      await db.execute(
+        'ALTER TABLE transactions ADD COLUMN is_monthly INTEGER NOT NULL DEFAULT 1',
+      );
+    }
   }
 
   Future<void> _createTables(Database db) async {
@@ -203,6 +210,7 @@ class AppDatabase {
         emi_monthly_amount    REAL,
         parent_transaction_id TEXT,
         exclude_from_expense  INTEGER NOT NULL DEFAULT 0,
+        is_monthly            INTEGER NOT NULL DEFAULT 1,
         is_recurring          INTEGER NOT NULL DEFAULT 0,
         recurring_frequency   TEXT,
         recurring_end_date    TEXT,

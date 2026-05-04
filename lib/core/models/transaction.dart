@@ -201,6 +201,12 @@ class Transaction {
   // Expense calculation control
   final bool excludeFromExpense; // If true, not included in expense totals
 
+  /// When true (default), this transaction counts toward the monthly
+  /// income/expense totals shown on the home screen.
+  /// When false, it is a "general" transaction — still recorded and visible
+  /// in all lists, but excluded from the monthly summary figures.
+  final bool isMonthly;
+
   // Recurring transaction fields
   final bool isRecurring; // If true, this is a recurring transaction
   final String? recurringFrequency; // 'daily', 'weekly', 'monthly', 'yearly'
@@ -231,6 +237,7 @@ class Transaction {
     this.emiMonthlyAmount,
     this.parentTransactionId,
     this.excludeFromExpense = false,
+    this.isMonthly = true,
     this.isRecurring = false,
     this.recurringFrequency,
     this.recurringEndDate,
@@ -260,6 +267,7 @@ class Transaction {
     double? emiMonthlyAmount,
     String? parentTransactionId,
     bool? excludeFromExpense,
+    bool? isMonthly,
     bool? isRecurring,
     String? recurringFrequency,
     DateTime? recurringEndDate,
@@ -285,6 +293,7 @@ class Transaction {
       emiMonthlyAmount: emiMonthlyAmount ?? this.emiMonthlyAmount,
       parentTransactionId: parentTransactionId ?? this.parentTransactionId,
       excludeFromExpense: excludeFromExpense ?? this.excludeFromExpense,
+      isMonthly: isMonthly ?? this.isMonthly,
       isRecurring: isRecurring ?? this.isRecurring,
       recurringFrequency: recurringFrequency ?? this.recurringFrequency,
       recurringEndDate: recurringEndDate ?? this.recurringEndDate,
