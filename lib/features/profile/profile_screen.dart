@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
@@ -12,9 +12,7 @@ import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
-import '../../core/services/sms_transaction_service.dart';
 import '../../core/theme/app_colors.dart';
-import '../sms/sms_transaction_review_screen.dart';
 import '../accounts/accounts_screen.dart';
 import '../categories/categories_screen.dart';
 import '../tags/tags_screen.dart';
@@ -549,6 +547,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (result.success && result.fileId != null) {
           await autoBackupService.setTargetFileId(result.fileId!);
           await autoBackupService.markBackedUpToday();
+          if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Row(
@@ -595,6 +594,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       await autoBackupService.setTargetFileId(chosen.id);
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -621,6 +621,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (result.success && result.fileId != null) {
         await autoBackupService.setTargetFileId(result.fileId!);
         await autoBackupService.markBackedUpToday();
+        if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Row(
@@ -1415,7 +1416,7 @@ class _AutoBackupFilePickerSheet extends StatelessWidget {
               controller: scrollCtrl,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               itemCount: files.length + 1, // +1 for "Create new" option
-              separatorBuilder: (_, __) => const Divider(
+              separatorBuilder: (_, _) => const Divider(
                 height: 1,
                 indent: 56,
                 color: Color(0xFFF0F2F5),
@@ -1799,294 +1800,6 @@ class _AutoBackupSettingsSheetState extends State<_AutoBackupSettingsSheet> {
             ),
             const SizedBox(height: 16),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── SMS Settings bottom sheet ─────────────────────────────────────────────────
-
-class _SmsSettingsSheet extends StatelessWidget {
-  final SmsTransactionService smsService;
-  final TransactionService transactionService;
-  final AccountService accountService;
-  final ScrollController scrollController;
-
-  const _SmsSettingsSheet({
-    required this.smsService,
-    required this.transactionService,
-    required this.accountService,
-    required this.scrollController,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          const SizedBox(height: 12),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.textLight,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'SMS Transaction Tracking',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24),
-            child: Text(
-              'Automatically detect and import transactions from bank SMS messages.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: ListView(
-              controller: scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              children: [
-                // Permission status card
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF4ECDC4).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.sms_outlined,
-                          color: Color(0xFF4ECDC4),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'SMS Permission',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              'Required to read bank messages',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          await smsService.requestSmsPermission();
-                          if (context.mounted) {
-                            (context as Element).markNeedsBuild();
-                          }
-                        },
-                        child: const Text('Grant'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Enable/Disable toggle
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF4285F4).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.toggle_on_rounded,
-                          color: Color(0xFF4285F4),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Auto-Scan',
-                              style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              'Scan for new transactions on app open',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Switch(
-                        value: smsService.isSmsTrackingEnabled,
-                        onChanged: (value) async {
-                          await smsService.setSmsTrackingEnabled(value);
-                          (context as Element).markNeedsBuild();
-                        },
-                        activeColor: const Color(0xFF4ECDC4),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Scan now button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      await smsService.scanSmsMessages();
-                      if (context.mounted) {
-                        // Navigate to review screen
-                        Navigator.pop(context);
-                        _showSmsReviewScreen(context);
-                      }
-                    },
-                    icon: const Icon(Icons.search, color: Colors.white),
-                    label: const Text(
-                      'Scan for Transactions',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4ECDC4),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Pending transactions count
-                if (smsService.pendingCount > 0)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF6B6B).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.pending_actions_rounded,
-                          color: Color(0xFFFF6B6B),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            '${smsService.pendingCount} transactions pending review',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFFFF6B6B),
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _showSmsReviewScreen(context);
-                          },
-                          child: const Text('Review'),
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 24),
-                // Privacy note
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2D9E6B).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.privacy_tip_outlined,
-                        color: Color(0xFF2D9E6B),
-                        size: 20,
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Your SMS data stays on your device. We never upload or store your messages.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 32),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSmsReviewScreen(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => SmsTransactionReviewScreen(
-          smsService: smsService,
-          transactionService: transactionService,
-          accountService: accountService,
         ),
       ),
     );
