@@ -19,7 +19,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _dbName = 'spendfluxa.db';
-  static const _dbVersion = 6;
+  static const _dbVersion = 7;
 
   Database? _db;
 
@@ -65,6 +65,7 @@ class AppDatabase {
     _db = await openDatabase(
       path,
       version: _dbVersion,
+      onUpgrade: _onUpgrade,
       // Do NOT pass onCreate — the restored file already has all tables.
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
     );
@@ -128,6 +129,17 @@ class AppDatabase {
       await db.execute(
         'ALTER TABLE transactions ADD COLUMN custom_category_id TEXT',
       );
+    }
+    if (oldVersion < 7) {
+      // Ensure custom_category_id exists for databases that reached version 6
+      // without the column (created before the column was added to _createTables).
+      try {
+        await db.execute(
+          'ALTER TABLE transactions ADD COLUMN custom_category_id TEXT',
+        );
+      } catch (_) {
+        // Column already exists — safe to ignore.
+      }
     }
   }
 
