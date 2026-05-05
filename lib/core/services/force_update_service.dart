@@ -6,7 +6,7 @@ class ForceUpdateService {
   /// URL of a JSON file you control, e.g. a GitHub raw file.
   /// Shape: { "min_version": "1.2.0", "store_url": "https://..." }
   static const _configUrl =
-      'https://raw.githubusercontent.com/Saran90/SpendFluxa/main/force_update.json';
+      'https://github.com/Saran90/SpendFluxa/blob/main/force_update.json';
 
   /// Returns the store URL if the installed version is below [minVersion],
   /// otherwise returns null (no update required).
