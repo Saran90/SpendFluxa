@@ -143,6 +143,8 @@ class TransactionService extends ChangeNotifier {
     required bool reverse,
   }) async {
     if (tx.accountId == null) return;
+    // Recurring templates are never real transactions — skip balance changes
+    if (tx.isRecurring && tx.recurringParentId == null) return;
 
     final account = accountService.all.firstWhere(
       (a) => a.id == tx.accountId,

@@ -34,6 +34,11 @@ class TransactionsScreen extends StatefulWidget {
 
 class _TransactionsScreenState extends State<TransactionsScreen> {
   late DateTime _selectedMonth;
+  TransactionCategory? _selectedCategory;
+  bool _searchVisible = false;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
+  final _searchFocus = FocusNode();
 
   @override
   void initState() {
@@ -47,20 +52,45 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _searchVisible = !_searchVisible;
+      if (_searchVisible) {
+        Future.microtask(() => _searchFocus.requestFocus());
+      } else {
+        _searchQuery = '';
+        _searchController.clear();
+        _searchFocus.unfocus();
+      }
+    });
+  }
+
   int get _year => _selectedMonth.year;
   int get _month => _selectedMonth.month;
 
-  void _prevMonth() => setState(
-    () => _selectedMonth = DateTime(
-      _selectedMonth.year,
-      _selectedMonth.month - 1,
-    ),
-  );
+  void _prevMonth() => setState(() {
+    _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
+    _selectedCategory = null;
+    _searchQuery = '';
+    _searchController.clear();
+  });
 
   void _nextMonth() {
     final next = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
     if (!next.isAfter(DateTime.now())) {
-      setState(() => _selectedMonth = next);
+      setState(() {
+        _selectedMonth = next;
+        _selectedCategory = null;
+        _searchQuery = '';
+        _searchController.clear();
+      });
     }
   }
 
@@ -102,7 +132,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         ]),
         builder: (context, _) {
           final fmt = widget.currencyService.formatter;
-          final txs = widget.transactionService.transactionsForMonth(
+          final allTxs = widget.transactionService.transactionsForMonth(
             _year,
             _month,
           );
@@ -114,6 +144,20 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             _year,
             _month,
           );
+          final categories = allTxs.map((t) => t.category).toSet().toList()
+            ..sort((a, b) => a.label.compareTo(b.label));
+          final q = _searchQuery.trim().toLowerCase();
+          final txs = allTxs.where((t) {
+            if (_selectedCategory != null && t.category != _selectedCategory) return false;
+            if (q.isNotEmpty) {
+              return t.title.toLowerCase().contains(q) ||
+                  t.category.label.toLowerCase().contains(q) ||
+                  (t.note?.toLowerCase().contains(q) ?? false) ||
+                  t.amount.toString().contains(q) ||
+                  fmt.format(t.amount).replaceAll(RegExp(r'[^0-9.]'), '').contains(q);
+            }
+            return true;
+          }).toList();
           final grouped = _groupByDate(txs);
           final dateKeys = grouped.keys.toList();
 
@@ -122,7 +166,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             children: [
               _buildHeader(),
               _buildMonthSelector(),
-              _buildSummaryCard(income, expenses, fmt),
+              if (_searchVisible) _buildSearchBar(),
+              if (!_searchVisible) _buildSummaryCard(income, expenses, fmt),
+              if (!_searchVisible && categories.isNotEmpty) _buildCategoryFilter(categories),
               Expanded(
                 child: txs.isEmpty
                     ? _buildEmptyState()
@@ -204,7 +250,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          padding: const EdgeInsets.fromLTRB(24, 16, 16, 24),
           child: Row(
             children: [
               Container(
@@ -240,8 +286,75 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   ],
                 ),
               ),
+              IconButton(
+                onPressed: _toggleSearch,
+                icon: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    _searchVisible ? Icons.search_off_rounded : Icons.search_rounded,
+                    key: ValueKey(_searchVisible),
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // ── Search bar ────────────────────────────────────────────────────────────
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 14),
+            const Icon(Icons.search_rounded, size: 20, color: AppColors.textSecondary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                focusNode: _searchFocus,
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: AppColors.textPrimary,
+                ),
+                decoration: const InputDecoration(
+                  hintText: 'Search transactions...',
+                  hintStyle: TextStyle(fontSize: 15, color: AppColors.textLight),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                onChanged: (v) => setState(() => _searchQuery = v),
+              ),
+            ),
+            if (_searchQuery.isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textSecondary),
+                onPressed: () => setState(() {
+                  _searchQuery = '';
+                  _searchController.clear();
+                }),
+              ),
+          ],
         ),
       ),
     );
@@ -434,13 +547,72 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   // ── Empty state ───────────────────────────────────────────────────────────
 
+  Widget _buildCategoryFilter(List<TransactionCategory> categories) {
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+        itemCount: categories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final cat = categories[i];
+          final selected = _selectedCategory == cat;
+          return GestureDetector(
+            onTap: () => setState(
+              () => _selectedCategory = selected ? null : cat,
+            ),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: selected
+                    ? cat.color.withValues(alpha: 0.15)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: selected ? cat.color : const Color(0xFFEEF0F3),
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(cat.icon, size: 14, color: cat.color),
+                  const SizedBox(width: 6),
+                  Text(
+                    cat.label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: selected ? cat.color : AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildEmptyState() {
+    final String message;
+    if (_searchQuery.trim().isNotEmpty) {
+      message = 'No results for "${_searchQuery.trim()}"';
+    } else if (_selectedCategory != null) {
+      message = 'No "${_selectedCategory!.label}" transactions this month';
+    } else {
+      message = 'Nothing recorded for ${DateFormat('MMMM yyyy').format(_selectedMonth)}';
+    }
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.receipt_long_rounded,
+            _searchQuery.trim().isNotEmpty ? Icons.search_off_rounded : Icons.receipt_long_rounded,
             size: 56,
             color: AppColors.textLight,
           ),
@@ -455,8 +627,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Nothing recorded for ${DateFormat('MMMM yyyy').format(_selectedMonth)}',
+            message,
             style: const TextStyle(fontSize: 13, color: AppColors.textLight),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
