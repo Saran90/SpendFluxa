@@ -3,11 +3,11 @@ import 'package:flutter/services.dart';
 
 /// Native SMS reader service using platform channels
 class SmsReaderService {
-  static const MethodChannel _channel = MethodChannel('com.spendfluxa/sms');
+  static const MethodChannel _channel = MethodChannel('com.spendflux/sms');
 
   // Singleton stream so we never create more than one EventChannel subscription
   static final Stream<Map<String, dynamic>> _smsStream =
-      EventChannel('com.spendfluxa/sms_stream').receiveBroadcastStream().map((
+      EventChannel('com.spendflux/sms_stream').receiveBroadcastStream().map((
         event,
       ) {
         final map = Map<String, dynamic>.from(event as Map);

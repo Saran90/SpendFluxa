@@ -1,4 +1,4 @@
-package com.example.spend_sense
+package com.spendflux.app
 
 import android.Manifest
 import android.content.BroadcastReceiver
@@ -19,8 +19,8 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterFragmentActivity() {
-    private val CHANNEL = "com.spendfluxa/sms"
-    private val EVENT_CHANNEL = "com.spendfluxa/sms_stream"
+    private val CHANNEL = "com.spendflux/sms"
+    private val EVENT_CHANNEL = "com.spendflux/sms_stream"
     private var smsReceiver: BroadcastReceiver? = null
     private var eventSink: EventChannel.EventSink? = null
 

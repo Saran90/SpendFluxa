@@ -17,7 +17,7 @@ if (useKeystore) {
 }
 
 android {
-    namespace = "com.example.spend_sense"
+    namespace = "com.spendflux.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -43,7 +43,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.spendfluxa.app"
+        applicationId = "com.spendflux.app"
         minSdk = 26  // Required for core library desugaring with notifications
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
