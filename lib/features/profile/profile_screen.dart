@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:intl/intl.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/account_service.dart';
@@ -65,6 +66,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   BudgetService get budgetService => widget.budgetService;
   BiometricService get biometricService => widget.biometricService;
   ScrollController? get scrollController => widget.scrollController;
+
+  String _appVersion = '';
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _appVersion = 'v${info.version}');
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -433,6 +444,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     ),
+                    if (_appVersion.isNotEmpty) ...[
+                      _divider(),
+                      _tile(
+                        icon: Icons.info_outline_rounded,
+                        label: 'App Version',
+                        color: AppColors.textSecondary,
+                        trailing: Text(
+                          _appVersion,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        showChevron: false,
+                        onTap: () {},
+                      ),
+                    ],
                   ],
                 ),
               ),

@@ -13,6 +13,7 @@ import '../../core/services/transaction_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/services/recurring_confirmation_service.dart';
 import '../../core/services/onboarding_service.dart';
+import '../../core/services/force_update_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../home/home_screen.dart';
 import '../transactions/transactions_screen.dart';
@@ -20,6 +21,7 @@ import '../transactions/add_transaction_screen.dart';
 import '../budget/budget_screen.dart';
 import '../profile/profile_screen.dart';
 import '../onboarding/onboarding_tour_screen.dart';
+import 'force_update_dialog.dart';
 
 class MainShell extends StatefulWidget {
   final AuthService authService;
@@ -93,8 +95,24 @@ class _MainShellState extends State<MainShell>
     // Show onboarding tour on first launch
     _checkAndShowOnboarding();
 
+    // Check for forced update
+    _checkForceUpdate();
+
     // Run auto-backup if it's due (silently, in background)
     _runAutoBackupIfDue();
+  }
+
+  Future<void> _checkForceUpdate() async {
+    await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
+    final storeUrl = await ForceUpdateService().checkForceUpdate();
+    if (storeUrl != null && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ForceUpdateDialog(storeUrl: storeUrl),
+      );
+    }
   }
 
   Future<void> _runAutoBackupIfDue() async {

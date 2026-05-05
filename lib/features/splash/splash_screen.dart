@@ -542,7 +542,7 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
           TextSpan(
-            text: 'Fluxa',
+            text: 'Flux',
             style: TextStyle(
               fontSize: 42,
               fontWeight: FontWeight.w700,

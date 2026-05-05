@@ -296,7 +296,7 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ),
                     TextSpan(
-                      text: 'Fluxa',
+                      text: 'Flux',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,

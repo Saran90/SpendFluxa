@@ -107,7 +107,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: spendfluxa-release-${{ github.run_number }}.apk
+          name: spendflux-release-${{ github.run_number }}.apk
           path: build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
 
