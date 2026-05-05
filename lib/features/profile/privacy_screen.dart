@@ -63,7 +63,7 @@ class PrivacyScreen extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              'How SpendFluxa handles your data',
+                              'How SpendFlux handles your data',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.white70,
@@ -129,7 +129,7 @@ class PrivacyScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'SpendFluxa is built with a privacy-first philosophy. '
+                    'SpendFlux is built with a privacy-first philosophy. '
                     'Your financial data is personal, and we treat it that way. '
                     'This document explains exactly what data we collect, '
                     'where it lives, and who can access it — in plain language.',
@@ -166,7 +166,7 @@ class PrivacyScreen extends StatelessWidget {
                     iconColor: const Color(0xFF9B59B6),
                     title: 'No cloud sync or remote database',
                     body:
-                        'SpendFluxa does not operate any backend servers, '
+                        'SpendFlux does not operate any backend servers, '
                         'databases, or cloud infrastructure. There is no '
                         'account system, no sync service, and no remote '
                         'storage managed by the app.',
@@ -201,7 +201,7 @@ class PrivacyScreen extends StatelessWidget {
                         'When you choose to back up, the app uploads a copy '
                         'of your local database directly to your personal '
                         'Google Drive account — specifically to a folder '
-                        'named "SpendFluxa Backups". Only you have access '
+                        'named "SpendFlux Backups". Only you have access '
                         'to this folder.',
                   ),
                   _divider(),
@@ -212,7 +212,7 @@ class PrivacyScreen extends StatelessWidget {
                     body:
                         'The backup is stored under your Google account using '
                         'the Drive File scope, which grants access only to '
-                        'files created by this app. SpendFluxa has no '
+                        'files created by this app. SpendFlux has no '
                         'visibility into your Drive and cannot read, modify, '
                         'or delete any of your files.',
                   ),
@@ -223,7 +223,7 @@ class PrivacyScreen extends StatelessWidget {
                     title: 'Backup is always optional',
                     body:
                         'The backup feature is entirely opt-in. You can use '
-                        'SpendFluxa indefinitely without ever connecting '
+                        'SpendFlux indefinitely without ever connecting '
                         'Google Drive. Your data remains on-device regardless.',
                   ),
                 ],
@@ -253,7 +253,7 @@ class PrivacyScreen extends StatelessWidget {
                     iconColor: AppColors.accent,
                     title: 'No sensitive Google data accessed',
                     body:
-                        'SpendFluxa does not request access to your Gmail, '
+                        'SpendFlux does not request access to your Gmail, '
                         'Google Contacts, Calendar, or any other Google '
                         'service. The only permission requested beyond basic '
                         'profile is the Drive File scope, and only when you '
@@ -285,7 +285,7 @@ class PrivacyScreen extends StatelessWidget {
                     iconColor: AppColors.accent,
                     title: 'We do not share your data',
                     body:
-                        'SpendFluxa does not sell, rent, trade, or share '
+                        'SpendFlux does not sell, rent, trade, or share '
                         'your personal or financial data with any third '
                         'party, advertiser, or analytics provider — ever.',
                   ),
@@ -328,9 +328,9 @@ class PrivacyScreen extends StatelessWidget {
                     title: 'Delete your data anytime',
                     body:
                         'You can delete all app data at any time by '
-                        'uninstalling SpendFluxa. This permanently removes '
+                        'uninstalling SpendFlux. This permanently removes '
                         'the local database from your device. To also remove '
-                        'Drive backups, delete the "SpendFluxa Backups" '
+                        'Drive backups, delete the "SpendFlux Backups" '
                         'folder from your Google Drive.',
                   ),
                   _divider(),
@@ -382,7 +382,7 @@ class PrivacyScreen extends StatelessWidget {
                     const Expanded(
                       child: Text(
                         'Your data belongs to you — and only you. '
-                        'SpendFluxa is a tool that works for you, '
+                        'SpendFlux is a tool that works for you, '
                         'not the other way around.',
                         style: TextStyle(
                           fontSize: 13,

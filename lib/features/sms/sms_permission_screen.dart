@@ -205,7 +205,7 @@ class _SmsPermissionScreenState extends State<SmsPermissionScreen> {
                 Text(
                   isGranted
                       ? 'SMS tracking is ready to use'
-                      : 'Allow SpendFluxa to read SMS messages',
+                      : 'Allow SpendFlux to read SMS messages',
                   style: const TextStyle(
                     fontSize: 13,
                     color: AppColors.textSecondary,

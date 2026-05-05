@@ -70,7 +70,7 @@ class BiometricService extends ChangeNotifier {
   ///
   /// Returns [true] if authentication succeeded, [false] otherwise.
   Future<bool> authenticate({
-    String reason = 'Authenticate to access SpendFluxa',
+    String reason = 'Authenticate to access SpendFlux',
   }) async {
     if (!_isAvailable) return true; // no biometrics → always allow
 

@@ -38,15 +38,15 @@ class DriveBackupFile {
 /// Handles backing up the SQLite database to Google Drive.
 ///
 /// The backup is stored in the user's Drive under the app-specific folder
-/// "SpendFluxa Backups" (appDataFolder scope is not used so the user can
+/// "SpendFlux Backups" (appDataFolder scope is not used so the user can
 /// see and manage their own backups).
 ///
 /// Requires the [drive.DriveApi.driveFileScope] OAuth scope to be granted.
 class BackupService extends ChangeNotifier {
   static const _prefKeyLastBackup = 'last_backup_timestamp';
   static const _prefKeyLastFileId = 'last_backup_file_id';
-  static const _driveFolder = 'SpendFluxa Backups';
-  static const _dbName = 'spendfluxa.db';
+  static const _driveFolder = 'SpendFlux Backups';
+  static const _dbName = 'spendflux.db';
 
   bool _isRunning = false;
   DateTime? _lastBackup;
@@ -120,10 +120,10 @@ class BackupService extends ChangeNotifier {
       final httpClient = _AuthenticatedClient(accessToken);
       final driveApi = drive.DriveApi(httpClient);
 
-      // 5. Find or create the "SpendFluxa Backups" folder
+      // 5. Find or create the "SpendFlux Backups" folder
       final folderId = await _ensureFolder(driveApi);
 
-      // 6. Build the file name: spendfluxa_backup_YYYY-MM-DD_HH-mm.db
+      // 6. Build the file name: spendflux_backup_YYYY-MM-DD_HH-mm.db
       final now = DateTime.now();
       final stamp =
           '${now.year.toString().padLeft(4, '0')}-'
@@ -131,7 +131,7 @@ class BackupService extends ChangeNotifier {
           '${now.day.toString().padLeft(2, '0')}_'
           '${now.hour.toString().padLeft(2, '0')}-'
           '${now.minute.toString().padLeft(2, '0')}';
-      final fileName = 'spendfluxa_backup_$stamp.db';
+      final fileName = 'spendflux_backup_$stamp.db';
 
       // 7. Upload (create new file — keeps history)
       final fileBytes = await dbFile.readAsBytes();
@@ -335,7 +335,7 @@ class BackupService extends ChangeNotifier {
           '${now.day.toString().padLeft(2, '0')}_'
           '${now.hour.toString().padLeft(2, '0')}-'
           '${now.minute.toString().padLeft(2, '0')}';
-      final newName = 'spendfluxa_backup_$stamp.db';
+      final newName = 'spendflux_backup_$stamp.db';
 
       try {
         final updated = await driveApi.files.update(

@@ -1,7 +1,7 @@
 # Onboarding Tour Feature
 
 ## Overview
-Added a beautiful onboarding tour that automatically shows on first launch after sign-in. The tour introduces users to key features of SpendFluxa with a swipeable, visually appealing interface.
+Added a beautiful onboarding tour that automatically shows on first launch after sign-in. The tour introduces users to key features of SpendFlux with a swipeable, visually appealing interface.
 
 ## Features
 
@@ -12,7 +12,7 @@ Added a beautiful onboarding tour that automatically shows on first launch after
 
 ### 📱 Tour Content (7 Pages)
 
-1. **Welcome to SpendFluxa**
+1. **Welcome to SpendFlux**
    - Warm welcome message
    - App overview
 

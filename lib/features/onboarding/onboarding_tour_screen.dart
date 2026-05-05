@@ -14,7 +14,7 @@ class _OnboardingTourScreenState extends State<OnboardingTourScreen> {
 
   final List<OnboardingPage> _pages = [
     OnboardingPage(
-      title: 'Welcome to SpendFluxa!',
+      title: 'Welcome to SpendFlux!',
       description:
           'Your personal finance companion that helps you track expenses, manage budgets, and achieve your financial goals.',
       icon: Icons.waving_hand_rounded,

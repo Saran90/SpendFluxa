@@ -504,7 +504,7 @@ final _recurringSteps = [
   const WalkthroughStep(
     title: 'User Confirmation Required',
     description:
-        'Unlike other apps that auto-create transactions, SpendFluxa requires your approval. This prevents unwanted entries if you cancel a subscription or skip a payment.',
+        'Unlike other apps that auto-create transactions, SpendFlux requires your approval. This prevents unwanted entries if you cancel a subscription or skip a payment.',
     icon: Icons.verified_user_rounded,
     color: AppColors.primary,
     visualHint: 'You\'re in Control',
@@ -792,7 +792,7 @@ final _backupSteps = [
   const WalkthroughStep(
     title: 'Why Backup?',
     description:
-        'Backing up your data ensures you never lose your financial records. SpendFluxa uses Google Drive to securely store your data.',
+        'Backing up your data ensures you never lose your financial records. SpendFlux uses Google Drive to securely store your data.',
     icon: Icons.cloud_upload_rounded,
     color: Color(0xFF4285F4),
     visualHint: 'Secure Cloud Backup',

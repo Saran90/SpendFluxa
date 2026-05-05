@@ -1,5 +1,5 @@
 /**
- * SpendFluxa icon generator — pure Node.js, no dependencies.
+ * SpendFlux icon generator — pure Node.js, no dependencies.
  *
  * Design:
  *   • 1024×1024 canvas

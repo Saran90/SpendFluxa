@@ -203,7 +203,7 @@ class _SplashScreenState extends State<SplashScreen>
     // If heading to home and biometric lock is enabled, authenticate first.
     if (destination == '/home' && widget.biometricService.isEnabled) {
       final ok = await widget.biometricService.authenticate(
-        reason: 'Authenticate to open SpendFluxa',
+        reason: 'Authenticate to open SpendFlux',
       );
       if (!mounted) return;
       if (!ok) {
@@ -224,7 +224,7 @@ class _SplashScreenState extends State<SplashScreen>
     await Future.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
     final ok = await widget.biometricService.authenticate(
-      reason: 'Authenticate to open SpendFluxa',
+      reason: 'Authenticate to open SpendFlux',
     );
     if (!mounted) return;
     if (ok) {

@@ -35,17 +35,17 @@ Future<void> main() async {
   // SMS tracking — disabled for now
   // await SmsTransactionService().initialize();
 
-  runApp(const SpendFluxaApp());
+  runApp(const SpendFluxApp());
 }
 
-class SpendFluxaApp extends StatefulWidget {
-  const SpendFluxaApp({super.key});
+class SpendFluxApp extends StatefulWidget {
+  const SpendFluxApp({super.key});
 
   @override
-  State<SpendFluxaApp> createState() => _SpendFluxaAppState();
+  State<SpendFluxApp> createState() => _SpendFluxAppState();
 }
 
-class _SpendFluxaAppState extends State<SpendFluxaApp> {
+class _SpendFluxAppState extends State<SpendFluxApp> {
   final AuthService _authService = AuthService();
   final AccountService _accountService = AccountService();
   late final TransactionService _transactionService = TransactionService(
@@ -84,7 +84,7 @@ class _SpendFluxaAppState extends State<SpendFluxaApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SpendFluxa',
+      title: 'SpendFlux',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

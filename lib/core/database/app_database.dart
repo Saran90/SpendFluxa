@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
-/// Central SQLite database helper for SpendFluxa.
+/// Central SQLite database helper for SpendFlux.
 ///
 /// Tables created on first launch:
 ///   - categories        (built-in, seeded automatically)
@@ -18,7 +18,7 @@ class AppDatabase {
   AppDatabase._();
   static final AppDatabase instance = AppDatabase._();
 
-  static const _dbName = 'spendfluxa.db';
+  static const _dbName = 'spendflux.db';
   static const _dbVersion = 7;
 
   Database? _db;
