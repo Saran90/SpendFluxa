@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'custom_category.dart';
 
 enum TransactionType { income, expense, transfer }
 
@@ -178,6 +179,20 @@ extension TransactionCategoryExtension on TransactionCategory {
   }
 }
 
+/// Resolved display properties for a transaction category.
+/// Use [Transaction.resolveCategory] to obtain this.
+class ResolvedCategory {
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  const ResolvedCategory({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+}
+
 class Transaction {
   final String id;
   final String title;
@@ -215,6 +230,9 @@ class Transaction {
   final String?
   recurringParentId; // For instances, links to the recurring template
 
+  // Custom category (user-defined, overrides the built-in category enum)
+  final String? customCategoryId;
+
   // SMS import fields
   final String? source; // 'manual', 'sms', 'bank_api'
   final String? smsMessageId; // Original SMS message ID for deduplication
@@ -242,6 +260,7 @@ class Transaction {
     this.recurringFrequency,
     this.recurringEndDate,
     this.recurringParentId,
+    this.customCategoryId,
     this.source,
     this.smsMessageId,
     this.bankName,
@@ -250,6 +269,29 @@ class Transaction {
   bool get isExpense => type == TransactionType.expense;
   bool get isIncome => type == TransactionType.income;
   bool get isTransfer => type == TransactionType.transfer;
+
+  /// Returns the effective icon/color/label for display.
+  /// If [customCategoryId] is set and [lookupCustom] finds it, those values
+  /// are used; otherwise falls back to the built-in [category].
+  ResolvedCategory resolveCategory(
+    CustomCategory? Function(String) lookupCustom,
+  ) {
+    if (customCategoryId != null) {
+      final custom = lookupCustom(customCategoryId!);
+      if (custom != null) {
+        return ResolvedCategory(
+          label: custom.label,
+          icon: custom.icon,
+          color: custom.color,
+        );
+      }
+    }
+    return ResolvedCategory(
+      label: category.label,
+      icon: category.icon,
+      color: category.color,
+    );
+  }
 
   Transaction copyWith({
     String? title,
@@ -272,6 +314,7 @@ class Transaction {
     String? recurringFrequency,
     DateTime? recurringEndDate,
     String? recurringParentId,
+    String? customCategoryId,
     String? source,
     String? smsMessageId,
     String? bankName,
@@ -298,6 +341,7 @@ class Transaction {
       recurringFrequency: recurringFrequency ?? this.recurringFrequency,
       recurringEndDate: recurringEndDate ?? this.recurringEndDate,
       recurringParentId: recurringParentId ?? this.recurringParentId,
+      customCategoryId: customCategoryId ?? this.customCategoryId,
       source: source ?? this.source,
       smsMessageId: smsMessageId ?? this.smsMessageId,
       bankName: bankName ?? this.bankName,
@@ -325,6 +369,7 @@ class Transaction {
     'recurringFrequency': recurringFrequency,
     'recurringEndDate': recurringEndDate?.toIso8601String(),
     'recurringParentId': recurringParentId,
+    'customCategoryId': customCategoryId,
     'source': source,
     'smsMessageId': smsMessageId,
     'bankName': bankName,
@@ -365,6 +410,7 @@ class Transaction {
         ? DateTime.parse(map['recurringEndDate'] as String)
         : null,
     recurringParentId: map['recurringParentId'] as String?,
+    customCategoryId: map['customCategoryId'] as String?,
     source: map['source'] as String?,
     smsMessageId: map['smsMessageId'] as String?,
     bankName: map['bankName'] as String?,

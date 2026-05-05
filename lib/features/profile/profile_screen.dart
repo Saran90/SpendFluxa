@@ -1662,7 +1662,9 @@ class _AutoBackupSettingsSheetState extends State<_AutoBackupSettingsSheet> {
               padding: EdgeInsets.symmetric(horizontal: 24),
               child: Text(
                 'The database will be backed up to Google Drive once per day '
-                'at or after the selected time when you open the app.',
+                'at the selected time, even when the app is closed. '
+                'If a backup is missed (no network or app was off), '
+                'it will run automatically the next time you open the app.',
                 style: TextStyle(
                   fontSize: 13,
                   color: AppColors.textSecondary,
@@ -1760,9 +1762,9 @@ class _AutoBackupSettingsSheetState extends State<_AutoBackupSettingsSheet> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Each daily backup overwrites the same file on Google Drive, '
-                        'keeping your storage tidy. You can always do a manual backup '
-                        'to create a separate snapshot.',
+                        'Each daily backup overwrites the same file on Google Drive. '
+                        'The backup runs at your chosen time even when the app is closed. '
+                        'If it was missed, it will catch up automatically on next app launch.',
                         style: TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,

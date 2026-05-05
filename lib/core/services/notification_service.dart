@@ -65,6 +65,66 @@ class NotificationService {
     debugPrint('Notification tapped: ${response.payload}');
   }
 
+  /// Schedule a daily auto-backup notification/alarm at the given time.
+  /// Uses DateTimeComponents.time so it repeats every day at that time,
+  /// even when the app is closed.
+  Future<void> scheduleAutoBackup({required int hour, required int minute}) async {
+    if (!_initialized) await initialize();
+
+    const id = _autoBackupNotificationId;
+    final now = tz.TZDateTime.now(tz.local);
+    var scheduled = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      minute,
+    );
+    // If the time has already passed today, start from tomorrow
+    if (scheduled.isBefore(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+
+    await _notifications.zonedSchedule(
+      id,
+      'SpendSense Auto-Backup',
+      'Daily backup is running in the background.',
+      scheduled,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'auto_backup',
+          'Auto Backup',
+          channelDescription: 'Daily automatic backup to Google Drive',
+          importance: Importance.low,
+          priority: Priority.low,
+          icon: '@mipmap/ic_launcher',
+          ongoing: false,
+          autoCancel: true,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: false,
+          presentBadge: false,
+          presentSound: false,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.time,
+    );
+    debugPrint('[AutoBackup] Scheduled daily alarm at $hour:${minute.toString().padLeft(2, '0')}');
+  }
+
+  /// Cancel the daily auto-backup alarm.
+  Future<void> cancelAutoBackup() async {
+    if (!_initialized) await initialize();
+    await _notifications.cancel(_autoBackupNotificationId);
+    debugPrint('[AutoBackup] Cancelled daily alarm');
+  }
+
+  static const int _autoBackupNotificationId = 999001;
+
   /// Schedule a reminder for a recurring transaction
   Future<void> scheduleReminder({
     required TransactionReminder reminder,

@@ -15,6 +15,14 @@ class CategoryService extends ChangeNotifier {
   List<CustomCategory> get incomeCategories =>
       _categories.where((c) => !c.isExpense).toList();
 
+  CustomCategory? getById(String id) {
+    try {
+      return _categories.firstWhere((c) => c.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
   CategoryService() {
     _load();
   }

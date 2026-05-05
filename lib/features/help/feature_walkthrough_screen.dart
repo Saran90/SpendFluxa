@@ -42,6 +42,10 @@ class _FeatureWalkthroughScreenState extends State<FeatureWalkthroughScreen> {
         return _excludeExpenseSteps;
       case FeatureType.backup:
         return _backupSteps;
+      case FeatureType.customCategories:
+        return _customCategoriesSteps;
+      case FeatureType.analytics:
+        return _analyticsSteps;
     }
   }
 
@@ -65,6 +69,10 @@ class _FeatureWalkthroughScreenState extends State<FeatureWalkthroughScreen> {
         return 'Exclude from Expenses';
       case FeatureType.backup:
         return 'Backup & Restore';
+      case FeatureType.customCategories:
+        return 'Custom Categories';
+      case FeatureType.analytics:
+        return 'Analytics';
     }
   }
 
@@ -812,6 +820,120 @@ final _backupSteps = [
     tips: [
       'You can see all available backups with dates',
       'Restoring replaces current data',
+    ],
+  ),
+];
+
+final _customCategoriesSteps = [
+  const WalkthroughStep(
+    title: 'Built-in vs Custom Categories',
+    description:
+        'SpendSense comes with a set of built-in categories for common expenses and income types. You can also create your own custom categories with a name, icon, and color of your choice.',
+    icon: Icons.category_rounded,
+    color: Color(0xFF9B59B6),
+    visualHint: 'Built-in + Your Own',
+    tips: [
+      'Built-in categories cannot be edited or deleted',
+      'Custom categories appear alongside built-ins when adding transactions',
+    ],
+  ),
+  const WalkthroughStep(
+    title: 'Create a Custom Category',
+    description:
+        'Go to Profile → Categories and tap the + button. Give your category a name, pick an icon from the icon library, and choose a color. Select whether it\'s for expenses or income.',
+    icon: Icons.add_circle_rounded,
+    color: Color(0xFF9B59B6),
+    visualHint: 'Name • Icon • Color',
+    tips: [
+      'Use descriptive names like "Pet Care" or "Side Hustle"',
+      'Pick a color that helps you identify it at a glance',
+    ],
+  ),
+  const WalkthroughStep(
+    title: 'Edit or Delete Custom Categories',
+    description:
+        'Tap any custom category card to see options. You can edit its name, icon, or color, or delete it entirely. Built-in categories cannot be modified.',
+    icon: Icons.edit_rounded,
+    color: Color(0xFF9B59B6),
+    visualHint: 'Tap to Edit or Delete',
+    tips: [
+      'Deleting a category does not delete its transactions',
+      'Existing transactions keep their category assignment',
+    ],
+  ),
+  const WalkthroughStep(
+    title: 'Using Custom Categories',
+    description:
+        'When adding or editing a transaction, tap the Category field. Your custom categories appear in the same picker as built-in ones. They also show up correctly in Analytics and budget tracking.',
+    icon: Icons.sell_rounded,
+    color: Color(0xFF9B59B6),
+    visualHint: 'Available Everywhere',
+    tips: [
+      'Custom categories are shown with a colored dot badge',
+      'They appear in the Analytics spending breakdown with their own color',
+    ],
+  ),
+];
+
+final _analyticsSteps = [
+  const WalkthroughStep(
+    title: 'Open Analytics',
+    description:
+        'Tap the bar chart icon in the top-right corner of the home screen to open Analytics. You can view a detailed breakdown of your spending for any month.',
+    icon: Icons.bar_chart_rounded,
+    color: Color(0xFF3498DB),
+    visualHint: 'Tap the chart icon',
+    tips: [
+      'Analytics only covers expense transactions',
+      'Income is shown in the Monthly Trend chart for comparison',
+    ],
+  ),
+  const WalkthroughStep(
+    title: 'Navigate Between Months',
+    description:
+        'Use the left and right arrows at the top to move between months. Tap the month label directly to pick any month from the last 2 years using the month picker.',
+    icon: Icons.calendar_month_rounded,
+    color: Color(0xFF3498DB),
+    visualHint: '← June 2025 →',
+    tips: [
+      'You cannot navigate beyond the current month',
+      'Tap the month label for a quick jump to any past month',
+    ],
+  ),
+  const WalkthroughStep(
+    title: 'Spending Breakdown (Pie Chart)',
+    description:
+        'The donut chart shows your top spending categories for the selected month. Tap any slice or legend item to highlight it and see the exact amount and percentage in the centre.',
+    icon: Icons.pie_chart_rounded,
+    color: Color(0xFF3498DB),
+    visualHint: 'Tap a slice for details',
+    tips: [
+      'If you have more than 6 categories, the smallest ones are grouped as "Other"',
+      'Tap the same slice again to deselect it',
+    ],
+  ),
+  const WalkthroughStep(
+    title: 'Monthly Trend (Bar Chart)',
+    description:
+        'The bar chart shows your income and expenses side by side for the last 6 months ending at the selected month. Green bars are income, red bars are expenses.',
+    icon: Icons.show_chart_rounded,
+    color: Color(0xFF3498DB),
+    visualHint: 'Income vs Expenses',
+    tips: [
+      'The current month\'s label is highlighted in the app\'s primary color',
+      'Use this to spot months where you overspent',
+    ],
+  ),
+  const WalkthroughStep(
+    title: 'Spending by Category List',
+    description:
+        'Below the charts, every category is listed with its total amount, percentage of total spending, and a progress bar. Categories are sorted from highest to lowest spend.',
+    icon: Icons.list_alt_rounded,
+    color: Color(0xFF3498DB),
+    visualHint: 'Sorted by Amount',
+    tips: [
+      'Custom categories appear here with their own icon and color',
+      'Tapping a pie slice dims all other categories in this list too',
     ],
   ),
 ];

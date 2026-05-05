@@ -19,7 +19,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _dbName = 'spendfluxa.db';
-  static const _dbVersion = 5;
+  static const _dbVersion = 6;
 
   Database? _db;
 
@@ -124,6 +124,11 @@ class AppDatabase {
         'ALTER TABLE transactions ADD COLUMN is_monthly INTEGER NOT NULL DEFAULT 1',
       );
     }
+    if (oldVersion < 6) {
+      await db.execute(
+        'ALTER TABLE transactions ADD COLUMN custom_category_id TEXT',
+      );
+    }
   }
 
   Future<void> _createTables(Database db) async {
@@ -218,6 +223,7 @@ class AppDatabase {
         source                TEXT,
         sms_message_id        TEXT,
         bank_name             TEXT,
+        custom_category_id    TEXT,
         FOREIGN KEY (account_id)    REFERENCES accounts(id) ON DELETE SET NULL,
         FOREIGN KEY (to_account_id) REFERENCES accounts(id) ON DELETE SET NULL
       )

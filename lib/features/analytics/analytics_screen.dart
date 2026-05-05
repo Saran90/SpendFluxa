@@ -3,19 +3,37 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/transaction.dart';
+import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
 
+/// Stable key for grouping: custom categories use their id, built-ins use enum name.
+class _CategoryKey {
+  final String key; // customCategoryId or category.name
+  final ResolvedCategory resolved;
+
+  const _CategoryKey({required this.key, required this.resolved});
+
+  @override
+  bool operator ==(Object other) =>
+      other is _CategoryKey && other.key == key;
+
+  @override
+  int get hashCode => key.hashCode;
+}
+
 class AnalyticsScreen extends StatefulWidget {
   final TransactionService transactionService;
   final CurrencyService currencyService;
+  final CategoryService categoryService;
   final ScrollController? scrollController;
 
   const AnalyticsScreen({
     super.key,
     required this.transactionService,
     required this.currencyService,
+    required this.categoryService,
     this.scrollController,
   });
 
@@ -68,6 +86,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         listenable: Listenable.merge([
           widget.transactionService,
           widget.currencyService,
+          widget.categoryService,
         ]),
         builder: (context, _) {
           final fmt = widget.currencyService.formatter;
@@ -76,11 +95,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               .where((t) => t.isExpense)
               .toList();
 
-          // Group by category
-          final Map<TransactionCategory, double> byCategory = {};
+          // Group by resolved category (custom categories get their own bucket)
+          final Map<_CategoryKey, double> byCategory = {};
           for (final tx in expenses) {
-            byCategory[tx.category] =
-                (byCategory[tx.category] ?? 0) + tx.amount;
+            final resolved = tx.resolveCategory(widget.categoryService.getById);
+            final key = _CategoryKey(
+              key: tx.customCategoryId ?? tx.category.name,
+              resolved: resolved,
+            );
+            byCategory[key] = (byCategory[key] ?? 0) + tx.amount;
           }
           final sorted = byCategory.entries.toList()
             ..sort((a, b) => b.value.compareTo(a.value));
@@ -287,6 +310,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate((context, index) {
                       final entry = sorted[index];
+                      final cat = entry.key.resolved;
                       final pct = total > 0 ? entry.value / total : 0.0;
                       final isHighlighted =
                           _tappedSlice == null || _tappedSlice == index;
@@ -317,21 +341,19 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                       width: 40,
                                       height: 40,
                                       decoration: BoxDecoration(
-                                        color: entry.key.color.withValues(
-                                          alpha: 0.12,
-                                        ),
+                                        color: cat.color.withValues(alpha: 0.12),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Icon(
-                                        entry.key.icon,
-                                        color: entry.key.color,
+                                        cat.icon,
+                                        color: cat.color,
                                         size: 20,
                                       ),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
-                                        entry.key.label,
+                                        cat.label,
                                         style: const TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w600,
@@ -356,7 +378,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                         style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
-                                          color: entry.key.color,
+                                          color: cat.color,
                                         ),
                                       ),
                                     ),
@@ -370,7 +392,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                     minHeight: 6,
                                     backgroundColor: AppColors.background,
                                     valueColor: AlwaysStoppedAnimation<Color>(
-                                      entry.key.color,
+                                      cat.color,
                                     ),
                                   ),
                                 ),
@@ -438,7 +460,7 @@ class _SectionLabel extends StatelessWidget {
 // ── Pie chart card ────────────────────────────────────────────────────────────
 
 class _PieChartCard extends StatelessWidget {
-  final List<MapEntry<TransactionCategory, double>> entries;
+  final List<MapEntry<_CategoryKey, double>> entries;
   final double total;
   final NumberFormat fmt;
   final int? tappedIndex;
@@ -454,14 +476,26 @@ class _PieChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Show at most top 6 categories; group the rest as "Other"
-    final List<MapEntry<TransactionCategory, double>> display;
+    final List<MapEntry<_CategoryKey, double>> display;
     if (entries.length <= 6) {
       display = entries;
     } else {
       final top5 = entries.take(5).toList();
       final otherTotal = entries.skip(5).fold(0.0, (s, e) => s + e.value);
-      display = [...top5, MapEntry(TransactionCategory.other, otherTotal)];
+      display = [
+        ...top5,
+        MapEntry(
+          _CategoryKey(
+            key: 'other',
+            resolved: ResolvedCategory(
+              label: 'Other',
+              icon: Icons.category_rounded,
+              color: const Color(0xFF95A5A6),
+            ),
+          ),
+          otherTotal,
+        ),
+      ];
     }
 
     final highlighted = tappedIndex != null && tappedIndex! < display.length
@@ -482,35 +516,33 @@ class _PieChartCard extends StatelessWidget {
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Pie + centre label
           SizedBox(
-            height: 220,
+            height: 200,
             child: Row(
               children: [
-                // Pie
-                Expanded(
-                  flex: 5,
+                // ── Donut ──────────────────────────────────────────────
+                SizedBox(
+                  width: 200,
+                  height: 200,
                   child: GestureDetector(
                     onTapUp: (details) {
-                      // Hit-test which slice was tapped
-                      final box = context.findRenderObject() as RenderBox?;
-                      if (box == null) return;
-                      // The pie occupies the left 5/9 of the row.
-                      // We approximate the pie centre.
-                      final pieWidth = box.size.width * 5 / 9;
-                      final centre = Offset(pieWidth / 2, 110);
+                      const size = 200.0;
+                      const centre = Offset(size / 2, size / 2);
                       final tap = details.localPosition;
                       final dx = tap.dx - centre.dx;
                       final dy = tap.dy - centre.dy;
                       final dist = math.sqrt(dx * dx + dy * dy);
-                      final radius = math.min(pieWidth, 220) / 2 - 10;
-                      if (dist > radius || dist < radius * 0.35) return;
+                      const outerR = size / 2 - 8;
+                      const innerR = outerR * 0.55;
+                      if (dist > outerR + 8 || dist < innerR) return;
                       double angle = math.atan2(dy, dx) + math.pi / 2;
                       if (angle < 0) angle += 2 * math.pi;
                       double cumulative = 0;
                       for (int i = 0; i < display.length; i++) {
-                        final sweep = (display[i].value / total) * 2 * math.pi;
+                        final sweep =
+                            (display[i].value / total) * 2 * math.pi;
                         if (angle <= cumulative + sweep) {
                           onSliceTap(i);
                           return;
@@ -518,110 +550,163 @@ class _PieChartCard extends StatelessWidget {
                         cumulative += sweep;
                       }
                     },
-                    child: CustomPaint(
-                      painter: _PieChartPainter(
-                        entries: display,
-                        total: total,
-                        tappedIndex: tappedIndex,
-                      ),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        CustomPaint(
+                          size: const Size(200, 200),
+                          painter: _PieChartPainter(
+                            entries: display,
+                            total: total,
+                            tappedIndex: tappedIndex,
+                          ),
+                        ),
+                        // Centre label
+                        SizedBox(
+                          width: 88,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            child: highlighted != null
+                                ? Column(
+                                    key: ValueKey(tappedIndex),
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        highlighted.key.resolved.icon,
+                                        size: 16,
+                                        color: highlighted.key.resolved.color,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        fmt.format(highlighted.value),
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: highlighted.key.resolved.color,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        '${(highlighted.value / total * 100).toStringAsFixed(1)}%',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  )
+                                : Column(
+                                    key: const ValueKey('total'),
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        fmt.format(total),
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const Text(
+                                        'Total',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                // Legend
+
+                const SizedBox(width: 16),
+
+                // ── Legend ─────────────────────────────────────────────
                 Expanded(
-                  flex: 4,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (highlighted != null) ...[
-                        // Show tapped slice detail
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            color: highlighted.key.color,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          highlighted.key.label,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          fmt.format(highlighted.value),
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: highlighted.key.color,
-                          ),
-                        ),
-                        Text(
-                          '${(highlighted.value / total * 100).toStringAsFixed(1)}%',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ] else ...[
-                        // Show compact legend
-                        ...display.take(6).map((e) {
-                          final pct = (e.value / total * 100).toStringAsFixed(
-                            0,
-                          );
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 7),
+                    children: display.asMap().entries.map((e) {
+                      final idx = e.key;
+                      final entry = e.value;
+                      final cat = entry.key.resolved;
+                      final isSelected = tappedIndex == idx;
+                      final isDimmed =
+                          tappedIndex != null && tappedIndex != idx;
+                      return GestureDetector(
+                        onTap: () => onSliceTap(idx),
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 180),
+                          opacity: isDimmed ? 0.35 : 1.0,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
                             child: Row(
                               children: [
-                                Container(
-                                  width: 9,
-                                  height: 9,
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  width: isSelected ? 12 : 8,
+                                  height: isSelected ? 12 : 8,
                                   decoration: BoxDecoration(
-                                    color: e.key.color,
+                                    color: cat.color,
                                     shape: BoxShape.circle,
                                   ),
                                 ),
-                                const SizedBox(width: 7),
+                                const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    e.key.label,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.textSecondary,
+                                    cat.label,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      color: isSelected
+                                          ? cat.color
+                                          : AppColors.textSecondary,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 Text(
-                                  '$pct%',
-                                  style: const TextStyle(
+                                  '${(entry.value / total * 100).toStringAsFixed(0)}%',
+                                  style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: AppColors.textPrimary,
+                                    color: isSelected
+                                        ? cat.color
+                                        : AppColors.textLight,
                                   ),
                                 ),
                               ],
                             ),
-                          );
-                        }),
-                      ],
-                    ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
                   ),
                 ),
               ],
             ),
           ),
-          // Tap hint
-          Text(
-            'Tap a slice to highlight',
-            style: TextStyle(fontSize: 11, color: AppColors.textLight),
+          const SizedBox(height: 12),
+          Center(
+            child: Text(
+              'Tap a slice to see details',
+              style: TextStyle(fontSize: 11, color: AppColors.textLight),
+            ),
           ),
         ],
       ),
@@ -630,11 +715,11 @@ class _PieChartCard extends StatelessWidget {
 }
 
 class _PieChartPainter extends CustomPainter {
-  final List<MapEntry<TransactionCategory, double>> entries;
+  final List<MapEntry<_CategoryKey, double>> entries;
   final double total;
   final int? tappedIndex;
 
-  _PieChartPainter({
+  const _PieChartPainter({
     required this.entries,
     required this.total,
     required this.tappedIndex,
@@ -642,11 +727,12 @@ class _PieChartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final centre = Offset(size.width / 2, size.height / 2);
-    final radius = math.min(size.width, size.height) / 2 - 10;
-    const innerRadius = 0.38; // donut hole ratio
-    const explodeOffset = 10.0;
-
+    const strokeWidth = 3.0;
+    const explode = 8.0;
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final outerR = cx - 8;
+    final innerR = outerR * 0.55;
     double startAngle = -math.pi / 2;
 
     for (int i = 0; i < entries.length; i++) {
@@ -654,59 +740,39 @@ class _PieChartPainter extends CustomPainter {
       final isSelected = tappedIndex == i;
       final midAngle = startAngle + sweep / 2;
 
-      // Explode selected slice outward
-      final offset = isSelected
-          ? Offset(
-              math.cos(midAngle) * explodeOffset,
-              math.sin(midAngle) * explodeOffset,
-            )
-          : Offset.zero;
+      final ox = isSelected ? math.cos(midAngle) * explode : 0.0;
+      final oy = isSelected ? math.sin(midAngle) * explode : 0.0;
+      final centre = Offset(cx + ox, cy + oy);
 
-      final paint = Paint()
-        ..color = isSelected
-            ? entries[i].key.color
-            : tappedIndex != null
-            ? entries[i].key.color.withValues(alpha: 0.35)
-            : entries[i].key.color
+      final color = tappedIndex != null && !isSelected
+          ? entries[i].key.resolved.color.withValues(alpha: 0.25)
+          : entries[i].key.resolved.color;
+
+      // Slice fill
+      final fillPaint = Paint()
+        ..color = color
         ..style = PaintingStyle.fill;
 
-      final path = Path();
-      final outerR = isSelected ? radius + 4 : radius;
-      final innerR = outerR * innerRadius;
+      final path = Path()
+        ..moveTo(centre.dx + innerR * math.cos(startAngle),
+            centre.dy + innerR * math.sin(startAngle))
+        ..lineTo(centre.dx + outerR * math.cos(startAngle),
+            centre.dy + outerR * math.sin(startAngle))
+        ..arcTo(Rect.fromCircle(center: centre, radius: outerR),
+            startAngle, sweep, false)
+        ..lineTo(centre.dx + innerR * math.cos(startAngle + sweep),
+            centre.dy + innerR * math.sin(startAngle + sweep))
+        ..arcTo(Rect.fromCircle(center: centre, radius: innerR),
+            startAngle + sweep, -sweep, false)
+        ..close();
 
-      path.moveTo(
-        centre.dx + offset.dx + innerR * math.cos(startAngle),
-        centre.dy + offset.dy + innerR * math.sin(startAngle),
-      );
-      path.lineTo(
-        centre.dx + offset.dx + outerR * math.cos(startAngle),
-        centre.dy + offset.dy + outerR * math.sin(startAngle),
-      );
-      path.arcTo(
-        Rect.fromCircle(center: centre + offset, radius: outerR),
-        startAngle,
-        sweep,
-        false,
-      );
-      path.lineTo(
-        centre.dx + offset.dx + innerR * math.cos(startAngle + sweep),
-        centre.dy + offset.dy + innerR * math.sin(startAngle + sweep),
-      );
-      path.arcTo(
-        Rect.fromCircle(center: centre + offset, radius: innerR),
-        startAngle + sweep,
-        -sweep,
-        false,
-      );
-      path.close();
+      canvas.drawPath(path, fillPaint);
 
-      canvas.drawPath(path, paint);
-
-      // Gap between slices
+      // White gap between slices
       final gapPaint = Paint()
-        ..color = AppColors.background
+        ..color = Colors.white
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2;
+        ..strokeWidth = strokeWidth;
       canvas.drawPath(path, gapPaint);
 
       startAngle += sweep;

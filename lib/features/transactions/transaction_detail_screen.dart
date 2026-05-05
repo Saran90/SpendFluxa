@@ -207,7 +207,7 @@ class TransactionDetailScreen extends StatelessWidget {
                     Expanded(
                       child: Text(
                         transaction.title.isEmpty
-                            ? transaction.category.label
+                            ? transaction.resolveCategory(categoryService.getById).label
                             : transaction.title,
                         style: const TextStyle(
                           fontSize: 18,
@@ -250,15 +250,16 @@ class TransactionDetailScreen extends StatelessWidget {
   // ── Main info card ────────────────────────────────────────────────────────
 
   Widget _buildMainCard(BuildContext context) {
+    final cat = transaction.resolveCategory(categoryService.getById);
     return _Card(
       child: Column(
         children: [
           // Category
           _Row(
-            icon: transaction.category.icon,
-            iconColor: transaction.category.color,
+            icon: cat.icon,
+            iconColor: cat.color,
             label: 'Category',
-            value: transaction.category.label,
+            value: cat.label,
           ),
           _divider(),
           // Date & time

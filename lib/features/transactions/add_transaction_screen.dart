@@ -76,6 +76,7 @@ class AddTransactionScreen extends StatefulWidget {
   final AccountService accountService;
   final TagService tagService;
   final Transaction? editing; // non-null = edit mode
+  final bool editRecurringTemplateOnly;
 
   const AddTransactionScreen({
     super.key,
@@ -85,6 +86,7 @@ class AddTransactionScreen extends StatefulWidget {
     required this.accountService,
     required this.tagService,
     this.editing,
+    this.editRecurringTemplateOnly = false,
   });
 
   @override
@@ -104,6 +106,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   _CategoryItem _selectedItem = const _CategoryItem.builtin(
     TransactionCategory.food,
   );
+  CustomCategory? _selectedCustomCategory;
   DateTime _selectedDate = DateTime.now();
   Account? _fromAccount;
   Account? _toAccount;
@@ -177,7 +180,22 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     if (tx != null) {
       _type = tx.type;
       _selectedCategory = tx.category;
-      _selectedItem = _CategoryItem.builtin(tx.category);
+      // Restore custom category selection if applicable
+      if (tx.customCategoryId != null) {
+        final allCustom = [
+          ...widget.categoryService.expenseCategories,
+          ...widget.categoryService.incomeCategories,
+        ];
+        final found = allCustom.where((c) => c.id == tx.customCategoryId).firstOrNull;
+        if (found != null) {
+          _selectedCustomCategory = found;
+          _selectedItem = _CategoryItem.custom(found);
+        } else {
+          _selectedItem = _CategoryItem.builtin(tx.category);
+        }
+      } else {
+        _selectedItem = _CategoryItem.builtin(tx.category);
+      }
       _amountController.text = tx.amount.toStringAsFixed(2);
       _titleController.text = tx.title;
       _noteController.text = tx.note ?? '';
@@ -263,6 +281,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       _type = t;
       _selectedCategory = defaultCat;
       _selectedItem = _CategoryItem.builtin(defaultCat);
+      _selectedCustomCategory = null;
       _isCategoryExpanded = false;
     });
   }
@@ -296,7 +315,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     final title = _titleController.text.trim().isEmpty
         ? (_type == TransactionType.transfer
               ? 'Transfer'
-              : _selectedCategory.label)
+              : _selectedCustomCategory?.label ?? _selectedCategory.label)
         : _titleController.text.trim();
 
     if (_isEmi && _shouldShowEmiOptions()) {
@@ -305,8 +324,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     } else if (_isRecurring) {
       // Create or update recurring transactions
       if (widget.editing != null) {
-        // Update existing recurring template
-        await widget.transactionService.updateTransaction(
+        // Update the template only — do NOT touch already-recorded instances
+        await widget.transactionService.updateRecurringTemplate(
           widget.editing!.copyWith(
             title: '$title (Recurring)',
             amount: amount,
@@ -326,6 +345,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
             recurringEndDate: _recurringEndDate,
             excludeFromExpense: _excludeFromExpense,
             isMonthly: _isMonthly,
+            customCategoryId: _selectedCustomCategory?.id,
           ),
         );
       } else {
@@ -352,6 +372,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
             tagIds: _selectedTagIds,
             excludeFromExpense: _excludeFromExpense,
             isMonthly: _isMonthly,
+            customCategoryId: _selectedCustomCategory?.id,
           ),
         );
       } else {
@@ -373,6 +394,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
             tagIds: _selectedTagIds,
             excludeFromExpense: _excludeFromExpense,
             isMonthly: _isMonthly,
+            customCategoryId: _selectedCustomCategory?.id,
           ),
         );
       }
@@ -406,6 +428,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
         recurringEndDate: _recurringEndDate,
         excludeFromExpense: _excludeFromExpense,
         isMonthly: _isMonthly,
+        customCategoryId: _selectedCustomCategory?.id,
       ),
     );
   }
@@ -432,8 +455,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
         emiInterestRate: _emiInterestRate,
         emiDurationMonths: _emiDurationMonths,
         emiMonthlyAmount: emiAmount,
-        excludeFromExpense:
-            true, // EMI parent transactions excluded from expense totals
+        excludeFromExpense: true,
+        customCategoryId: _selectedCustomCategory?.id,
       ),
     );
 
@@ -459,8 +482,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
           isEmi: true,
           parentTransactionId: parentId,
           emiMonthlyAmount: emiAmount,
-          excludeFromExpense:
-              true, // EMI installments excluded from expense totals
+          excludeFromExpense: true,
+          customCategoryId: _selectedCustomCategory?.id,
         ),
       );
     }
@@ -777,6 +800,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                       _selectedItem = item;
                       _selectedCategory =
                           item.builtin ?? TransactionCategory.other;
+                      _selectedCustomCategory = item.custom;
                     }),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),

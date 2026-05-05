@@ -8,4 +8,6 @@ enum FeatureType {
   budgets,
   excludeExpense,
   backup,
+  customCategories,
+  analytics,
 }

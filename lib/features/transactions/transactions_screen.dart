@@ -214,6 +214,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                 (ctx, i) => _TransactionTile(
                                   tx: grouped[dateKey]![i],
                                   fmt: fmt,
+                                  categoryService: widget.categoryService,
                                   onTap: () => _openDetail(
                                     context,
                                     grouped[dateKey]![i],
@@ -642,11 +643,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 class _TransactionTile extends StatelessWidget {
   final Transaction tx;
   final NumberFormat fmt;
+  final CategoryService categoryService;
   final VoidCallback onTap;
 
   const _TransactionTile({
     required this.tx,
     required this.fmt,
+    required this.categoryService,
     required this.onTap,
   });
 
@@ -656,6 +659,7 @@ class _TransactionTile extends StatelessWidget {
     final amountColor = tx.isIncome
         ? const Color(0xFF2D9E6B)
         : AppColors.textPrimary;
+    final cat = tx.resolveCategory(categoryService.getById);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
@@ -681,12 +685,12 @@ class _TransactionTile extends StatelessWidget {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: tx.category.color.withValues(alpha: 0.12),
+                  color: cat.color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
-                  tx.category.icon,
-                  color: tx.category.color,
+                  cat.icon,
+                  color: cat.color,
                   size: 22,
                 ),
               ),
@@ -717,15 +721,15 @@ class _TransactionTile extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: tx.category.color.withValues(alpha: 0.10),
+                            color: cat.color.withValues(alpha: 0.10),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            tx.category.label,
+                            cat.label,
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: tx.category.color,
+                              color: cat.color,
                             ),
                           ),
                         ),

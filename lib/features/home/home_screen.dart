@@ -19,6 +19,7 @@ import '../accounts/account_detail_screen.dart';
 import '../accounts/accounts_screen.dart';
 import '../analytics/analytics_screen.dart';
 import '../transactions/transaction_detail_screen.dart';
+import '../transactions/recurring_transactions_screen.dart';
 import '../reminders/reminder_banner.dart';
 import '../reminders/recurring_confirmation_banner.dart';
 // import '../sms/sms_transaction_banner.dart'; // hidden for now
@@ -209,6 +210,20 @@ class _HomeScreenState extends State<HomeScreen>
                   child: _buildSectionHeader(
                     'Recurring Transactions',
                     recurringTemplates,
+                    onSeeAll: recurringTemplates.isEmpty
+                        ? null
+                        : () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => RecurringTransactionsScreen(
+                                  transactionService:
+                                      widget.transactionService,
+                                  currencyService: widget.currencyService,
+                                  categoryService: widget.categoryService,
+                                  accountService: widget.accountService,
+                                  tagService: widget.tagService,
+                                ),
+                              ),
+                            ),
                   ),
                 ),
                 if (recurringTemplates.isEmpty)
@@ -524,6 +539,7 @@ class _HomeScreenState extends State<HomeScreen>
         builder: (_) => AnalyticsScreen(
           transactionService: widget.transactionService,
           currencyService: widget.currencyService,
+          categoryService: widget.categoryService,
         ),
       ),
     );
@@ -650,7 +666,11 @@ class _HomeScreenState extends State<HomeScreen>
 
   // ── Section header ────────────────────────────────────────────────────────
 
-  Widget _buildSectionHeader(String title, List<Transaction> transactions) {
+  Widget _buildSectionHeader(
+    String title,
+    List<Transaction> transactions, {
+    VoidCallback? onSeeAll,
+  }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
       child: Row(
@@ -664,11 +684,9 @@ class _HomeScreenState extends State<HomeScreen>
               color: AppColors.textPrimary,
             ),
           ),
-          if (transactions.isNotEmpty)
+          if (transactions.isNotEmpty && onSeeAll != null)
             GestureDetector(
-              onTap: () {
-                // TODO: navigate to full transaction list
-              },
+              onTap: onSeeAll,
               child: const Text(
                 'See all',
                 style: TextStyle(
@@ -697,6 +715,9 @@ class _HomeScreenState extends State<HomeScreen>
     final amountColor = tx.isIncome
         ? const Color(0xFF2D9E6B)
         : AppColors.textPrimary;
+    final cat = tx.resolveCategory(
+      (id) => widget.categoryService.getById(id),
+    );
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, isFirst ? 0 : 0, 20, isLast ? 0 : 0),
@@ -723,12 +744,12 @@ class _HomeScreenState extends State<HomeScreen>
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: tx.category.color.withValues(alpha: 0.12),
+                  color: cat.color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
-                  tx.category.icon,
-                  color: tx.category.color,
+                  cat.icon,
+                  color: cat.color,
                   size: 22,
                 ),
               ),
@@ -753,7 +774,7 @@ class _HomeScreenState extends State<HomeScreen>
                     Row(
                       children: [
                         Text(
-                          tx.category.label,
+                          cat.label,
                           style: const TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary,
@@ -890,6 +911,9 @@ class _HomeScreenState extends State<HomeScreen>
     final amountColor = tx.isIncome
         ? const Color(0xFF2D9E6B)
         : AppColors.textPrimary;
+    final cat = tx.resolveCategory(
+      (id) => widget.categoryService.getById(id),
+    );
 
     // Format frequency label
     String frequencyLabel = '';
@@ -921,13 +945,13 @@ class _HomeScreenState extends State<HomeScreen>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              tx.category.color.withValues(alpha: 0.08),
-              tx.category.color.withValues(alpha: 0.02),
+              cat.color.withValues(alpha: 0.08),
+              cat.color.withValues(alpha: 0.02),
             ],
           ),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: tx.category.color.withValues(alpha: 0.3),
+            color: cat.color.withValues(alpha: 0.3),
             width: 1.5,
           ),
           boxShadow: [
@@ -953,12 +977,12 @@ class _HomeScreenState extends State<HomeScreen>
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: tx.category.color.withValues(alpha: 0.15),
+                        color: cat.color.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        tx.category.icon,
-                        color: tx.category.color,
+                        cat.icon,
+                        color: cat.color,
                         size: 22,
                       ),
                     ),
@@ -988,7 +1012,7 @@ class _HomeScreenState extends State<HomeScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: tx.category.color.withValues(alpha: 0.15),
+                    color: cat.color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -996,7 +1020,7 @@ class _HomeScreenState extends State<HomeScreen>
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: tx.category.color,
+                      color: cat.color,
                     ),
                   ),
                 ),

@@ -116,6 +116,18 @@ class TransactionService extends ChangeNotifier {
     await _applyTransactionDelta(updated, reverse: false);
   }
 
+  /// Updates a recurring template row only — no balance changes.
+  /// Already-recorded child instances are left untouched.
+  Future<void> updateRecurringTemplate(Transaction updated) async {
+    await AppDatabase.instance.update(
+      'transactions',
+      _toRow(updated),
+      where: 'id = ?',
+      whereArgs: [updated.id],
+    );
+    await _load();
+  }
+
   Future<void> removeTransaction(String id) async {
     final tx = _transactions.firstWhere(
       (t) => t.id == id,
@@ -247,6 +259,7 @@ class TransactionService extends ChangeNotifier {
     'recurring_frequency': t.recurringFrequency,
     'recurring_end_date': t.recurringEndDate?.toIso8601String(),
     'recurring_parent_id': t.recurringParentId,
+    'custom_category_id': t.customCategoryId,
   };
 
   Transaction _fromRow(Map<String, dynamic> row) => Transaction(
@@ -285,5 +298,6 @@ class TransactionService extends ChangeNotifier {
         ? DateTime.parse(row['recurring_end_date'] as String)
         : null,
     recurringParentId: row['recurring_parent_id'] as String?,
+    customCategoryId: row['custom_category_id'] as String?,
   );
 }

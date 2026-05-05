@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'notification_service.dart';
 
 /// Manages the auto-backup schedule preference.
 ///
@@ -50,6 +51,9 @@ class AutoBackupService extends ChangeNotifier {
     _minute = prefs.getInt(_keyMinute) ?? 0;
     _targetFileId = prefs.getString(_keyTargetId);
     _lastBackupDate = prefs.getString(_keyLastDate);
+    // Re-register the OS alarm on every app start in case it was cleared
+    // (e.g. after a device reboot or app update).
+    if (_enabled) await scheduleNotification();
     notifyListeners();
   }
 
@@ -57,6 +61,11 @@ class AutoBackupService extends ChangeNotifier {
     _enabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyEnabled, value);
+    if (value) {
+      await scheduleNotification();
+    } else {
+      await cancelNotification();
+    }
     notifyListeners();
   }
 
@@ -66,6 +75,7 @@ class AutoBackupService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyHour, hour);
     await prefs.setInt(_keyMinute, minute);
+    if (_enabled) await scheduleNotification(); // reschedule at new time
     notifyListeners();
   }
 
@@ -95,8 +105,10 @@ class AutoBackupService extends ChangeNotifier {
 
   /// Returns true when auto-backup is enabled, the scheduled time has passed
   /// today, and no backup has been done yet today.
+  /// Also returns true if the last backup was before today (missed backup).
   bool isDueNow() {
     if (!_enabled) return false;
+    if (_lastBackupDate == _todayString()) return false; // already done today
     final now = DateTime.now();
     final scheduledToday = DateTime(
       now.year,
@@ -105,8 +117,32 @@ class AutoBackupService extends ChangeNotifier {
       _hour,
       _minute,
     );
-    if (now.isBefore(scheduledToday)) return false;
-    return _lastBackupDate != _todayString();
+    // Due if: scheduled time has passed today, OR last backup was a previous day
+    if (now.isBefore(scheduledToday) && _lastBackupDate != null) {
+      // Scheduled time hasn't passed yet today, but check if we missed yesterday
+      final lastDate = DateTime.tryParse(_lastBackupDate!);
+      if (lastDate == null) return true; // never backed up
+      final yesterday = DateTime(now.year, now.month, now.day - 1);
+      return lastDate.isBefore(yesterday) ||
+          (lastDate.year == yesterday.year &&
+              lastDate.month == yesterday.month &&
+              lastDate.day == yesterday.day);
+    }
+    return true; // scheduled time passed and not yet done today
+  }
+
+  /// Schedule the daily OS-level alarm via [NotificationService].
+  Future<void> scheduleNotification() async {
+    if (!_enabled) return;
+    await NotificationService().scheduleAutoBackup(
+      hour: _hour,
+      minute: _minute,
+    );
+  }
+
+  /// Cancel the daily OS-level alarm.
+  Future<void> cancelNotification() async {
+    await NotificationService().cancelAutoBackup();
   }
 
   static String _todayString() {
