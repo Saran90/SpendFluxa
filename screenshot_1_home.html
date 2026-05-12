@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpendFlux - Home Screen</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .phone-container {
+            width: 375px;
+            height: 812px;
+            background: #000;
+            border-radius: 40px;
+            padding: 8px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background: #F7FAFA;
+            border-radius: 32px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .status-bar {
+            height: 44px;
+            background: transparent;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: white;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4ECDC4 0%, #38B2A9 100%);
+            padding: 44px 24px 32px;
+            border-radius: 0 0 32px 32px;
+            color: white;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 28px;
+        }
+
+        .greeting h1 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 2px;
+        }
+
+        .greeting p {
+            font-size: 13px;
+            opacity: 0.75;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .action-btn {
+            width: 40px;
+            height: 40px;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+        }
+
+        .avatar {
+            width: 44px;
+            height: 44px;
+            background: #38B2A9;
+            border: 2px solid rgba(255,255,255,0.6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .balance-section p {
+            font-size: 13px;
+            opacity: 0.75;
+            margin-bottom: 4px;
+            letter-spacing: 0.4px;
+        }
+
+        .balance-amount {
+            font-size: 38px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .summary-cards {
+            display: flex;
+            gap: 14px;
+            padding: 20px 20px 0;
+        }
+
+        .summary-card {
+            flex: 1;
+            background: white;
+            padding: 18px;
+            border-radius: 18px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        .summary-card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .summary-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: white;
+        }
+
+        .income-icon { background: #2D9E6B; }
+        .expense-icon { background: #FF6B6B; }
+
+        .summary-label {
+            font-size: 13px;
+            color: #6B7C93;
+            font-weight: 600;
+        }
+
+        .summary-amount {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1A2E44;
+        }
+
+        .progress-card {
+            margin: 16px 20px 0;
+            background: white;
+            padding: 18px;
+            border-radius: 18px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .progress-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A2E44;
+        }
+
+        .progress-badge {
+            padding: 4px 10px;
+            background: rgba(45, 158, 107, 0.12);
+            color: #2D9E6B;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #F7FAFA;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #4ECDC4;
+            width: 30%;
+            border-radius: 6px;
+        }
+
+        .progress-text {
+            font-size: 12px;
+            color: #6B7C93;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 20px 12px;
+        }
+
+        .section-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #1A2E44;
+        }
+
+        .see-all {
+            font-size: 13px;
+            font-weight: 600;
+            color: #4ECDC4;
+        }
+
+        .transaction-list {
+            padding: 0 20px;
+        }
+
+        .transaction-item {
+            background: white;
+            padding: 14px 16px;
+            border-radius: 16px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .transaction-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .food-icon { background: rgba(255, 107, 107, 0.12); color: #FF6B6B; }
+        .transport-icon { background: rgba(78, 205, 196, 0.12); color: #4ECDC4; }
+        .income-icon-tx { background: rgba(45, 158, 107, 0.12); color: #2D9E6B; }
+        .shopping-icon { background: rgba(255, 190, 11, 0.12); color: #FFBE0B; }
+
+        .transaction-details {
+            flex: 1;
+        }
+
+        .transaction-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A2E44;
+            margin-bottom: 3px;
+        }
+
+        .transaction-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #6B7C93;
+        }
+
+        .meta-dot {
+            width: 3px;
+            height: 3px;
+            background: #B0BEC5;
+            border-radius: 50%;
+        }
+
+        .transaction-amount {
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .amount-positive { color: #2D9E6B; }
+        .amount-negative { color: #1A2E44; }
+    </style>
+</head>
+<body>
+    <div class="phone-container">
+        <div class="phone-screen">
+            <div class="status-bar">
+                <span>9:41</span>
+                <span>📶 📶 🔋</span>
+            </div>
+            
+            <div class="header">
+                <div class="header-top">
+                    <div class="greeting">
+                        <h1>Hello, Sarah 👋</h1>
+                        <p>December 2024</p>
+                    </div>
+                    <div class="header-actions">
+                        <div class="action-btn">📊</div>
+                        <div class="avatar">S</div>
+                    </div>
+                </div>
+                
+                <div class="balance-section">
+                    <p>Net Balance</p>
+                    <div class="balance-amount">₹45,230</div>
+                </div>
+            </div>
+            
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <div class="summary-card-header">
+                        <div class="summary-icon income-icon">↓</div>
+                        <div class="summary-label">Income</div>
+                    </div>
+                    <div class="summary-amount">₹65,000</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-card-header">
+                        <div class="summary-icon expense-icon">↑</div>
+                        <div class="summary-label">Expenses</div>
+                    </div>
+                    <div class="summary-amount">₹19,770</div>
+                </div>
+            </div>
+            
+            <div class="progress-card">
+                <div class="progress-header">
+                    <div class="progress-title">Spending vs Income</div>
+                    <div class="progress-badge">30% spent</div>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+                <div class="progress-text">You're within budget — keep it up!</div>
+            </div>
+            
+            <div class="section-header">
+                <div class="section-title">Recent Transactions</div>
+                <div class="see-all">See all</div>
+            </div>
+            
+            <div class="transaction-list">
+                <div class="transaction-item">
+                    <div class="transaction-icon food-icon">🍕</div>
+                    <div class="transaction-details">
+                        <div class="transaction-title">Lunch at Cafe</div>
+                        <div class="transaction-meta">
+                            <span>Food & Dining</span>
+                            <div class="meta-dot"></div>
+                            <span>Dec 15</span>
+                        </div>
+                    </div>
+                    <div class="transaction-amount amount-negative">-₹450</div>
+                </div>
+                
+                <div class="transaction-item">
+                    <div class="transaction-icon transport-icon">⛽</div>
+                    <div class="transaction-details">
+                        <div class="transaction-title">Petrol</div>
+                        <div class="transaction-meta">
+                            <span>Transport</span>
+                            <div class="meta-dot"></div>
+                            <span>Dec 14</span>
+                        </div>
+                    </div>
+                    <div class="transaction-amount amount-negative">-₹2,000</div>
+                </div>
+                
+                <div class="transaction-item">
+                    <div class="transaction-icon income-icon-tx">💰</div>
+                    <div class="transaction-details">
+                        <div class="transaction-title">Salary</div>
+                        <div class="transaction-meta">
+                            <span>Income</span>
+                            <div class="meta-dot"></div>
+                            <span>Dec 1</span>
+                        </div>
+                    </div>
+                    <div class="transaction-amount amount-positive">+₹50,000</div>
+                </div>
+                
+                <div class="transaction-item">
+                    <div class="transaction-icon shopping-icon">🛒</div>
+                    <div class="transaction-details">
+                        <div class="transaction-title">Groceries</div>
+                        <div class="transaction-meta">
+                            <span>Shopping</span>
+                            <div class="meta-dot"></div>
+                            <span>Dec 13</span>
+                        </div>
+                    </div>
+                    <div class="transaction-amount amount-negative">-₹1,200</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,205 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║              PLAY STORE ASSETS - QUICK REFERENCE                     ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+📱 APP ICON (512 × 512 px)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Requirements:
+  • Format: PNG or JPEG
+  • Size: Up to 1 MB
+  • Dimensions: 512 × 512 pixels
+  • No rounded corners
+
+Fastest Method (5 min):
+  1. Go to: https://www.iloveimg.com/resize-image
+  2. Upload: assets/icons/app_icon.png
+  3. Resize to: 512 × 512 pixels
+  4. Download as: play_store_icon_512.png
+
+Upload Location:
+  Play Console → Store presence → Main store listing → App icon
+
+Files Created:
+  • PLAY_STORE_ICON_GUIDE.md
+  • create_play_store_icon.py
+  • create_play_store_icon.ps1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎨 FEATURE GRAPHIC (1024 × 500 px)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Requirements:
+  • Format: PNG or JPEG
+  • Size: Up to 15 MB
+  • Dimensions: 1024 × 500 pixels
+  • Purpose: Top banner on Play Store
+
+Fastest Method (10 min):
+  1. Go to: https://www.canva.com/
+  2. Create custom size: 1024 × 500 px
+  3. Background: #4ECDC4 (Teal)
+  4. Add text: "SpendFlux" (Bold, 72pt, White)
+  5. Add text: "Track Your Expenses Effortlessly" (32pt, White)
+  6. Upload app icon: assets/icons/app_icon.png
+  7. Position: Icon left, text right
+  8. Download as PNG
+
+Upload Location:
+  Play Console → Store presence → Main store listing → Feature graphic
+
+Files Created:
+  • FEATURE_GRAPHIC_QUICK_START.md
+  • CREATE_FEATURE_GRAPHIC.md
+  • FEATURE_GRAPHIC_TEMPLATES.md
+  • create_feature_graphic.py
+  • create_feature_graphic.ps1
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 YOUR BRAND IDENTITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+App Name: SpendFlux
+Tagline: Track Your Expenses Effortlessly
+Primary Color: #4ECDC4 (Teal)
+Text Color: #FFFFFF (White)
+Current Icon: assets/icons/app_icon.png (~66 KB)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+App Icon (512×512):
+  [ ] Created
+  [ ] Correct dimensions (512 × 512 px)
+  [ ] Under 1 MB
+  [ ] PNG format
+  [ ] Uploaded to Play Console
+
+Feature Graphic (1024×500):
+  [ ] Created
+  [ ] Correct dimensions (1024 × 500 px)
+  [ ] Under 15 MB
+  [ ] PNG format
+  [ ] Includes app name and tagline
+  [ ] Uses brand color (#4ECDC4)
+  [ ] Uploaded to Play Console
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 QUICK START WORKFLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Total Time: ~15 minutes
+
+Step 1: Create App Icon (5 min)
+  → Use: https://www.iloveimg.com/resize-image
+  → Resize assets/icons/app_icon.png to 512×512
+  → Save as: play_store_icon_512.png
+
+Step 2: Create Feature Graphic (10 min)
+  → Use: https://www.canva.com/
+  → Size: 1024 × 500 px
+  → Design with brand colors
+  → Save as: feature_graphic_1024x500.png
+
+Step 3: Upload to Play Console
+  → Go to: https://play.google.com/console
+  → Store presence → Main store listing
+  → Upload both assets
+  → Save and publish
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📁 RECOMMENDED FILE STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+store_assets/
+├── play_store_icon_512.png          (512×512, <1MB)
+├── feature_graphic_1024x500.png     (1024×500, <15MB)
+├── screenshots/
+│   ├── phone/
+│   │   ├── screenshot_1.png
+│   │   ├── screenshot_2.png
+│   │   └── ...
+│   └── tablet/ (optional)
+└── promotional/ (optional)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 AUTOMATED SCRIPTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+App Icon:
+  • create_icon.bat (tries all methods)
+  • python create_play_store_icon.py
+  • powershell create_play_store_icon.ps1
+
+Feature Graphic:
+  • python create_feature_graphic.py
+  • powershell create_feature_graphic.ps1
+
+Note: Scripts create basic templates. Use Canva for better results!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 DOCUMENTATION FILES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+App Icon:
+  • PLAY_STORE_ICON_GUIDE.md (comprehensive guide)
+  • CREATE_PLAY_STORE_ICON.md (detailed instructions)
+
+Feature Graphic:
+  • FEATURE_GRAPHIC_QUICK_START.md (quick guide)
+  • CREATE_FEATURE_GRAPHIC.md (full instructions)
+  • FEATURE_GRAPHIC_TEMPLATES.md (design templates)
+
+This File:
+  • PLAY_STORE_ASSETS_QUICK_REFERENCE.txt (you are here)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 PRO TIPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Use Canva for best results (free & easy)
+2. Keep designs simple and clean
+3. Use your brand color (#4ECDC4) consistently
+4. Test how assets look at small sizes
+5. Get feedback before uploading
+6. Save source files for future updates
+7. Create a store_assets/ folder for organization
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🆘 NEED HELP?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+"I have no design skills"
+  → Use Canva (easiest option)
+
+"I need it fast"
+  → Use online tools (iLoveIMG for icon, Canva for graphic)
+
+"I want professional quality"
+  → Hire on Fiverr ($10-50 for both assets)
+
+"I need examples"
+  → See FEATURE_GRAPHIC_TEMPLATES.md
+
+"I need step-by-step"
+  → See FEATURE_GRAPHIC_QUICK_START.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎉 YOU'RE READY!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Follow the quick start workflow above and you'll have both assets
+ready in about 15 minutes. Good luck with your Play Store launch! 🚀
+
+═══════════════════════════════════════════════════════════════════════

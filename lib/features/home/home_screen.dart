@@ -9,7 +9,6 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/budget_service.dart';
 import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
-import '../../core/services/sms_transaction_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/services/reminder_service.dart';
@@ -22,7 +21,6 @@ import '../transactions/transaction_detail_screen.dart';
 import '../transactions/recurring_transactions_screen.dart';
 import '../reminders/reminder_banner.dart';
 import '../reminders/recurring_confirmation_banner.dart';
-// import '../sms/sms_transaction_banner.dart'; // hidden for now
 
 class HomeScreen extends StatefulWidget {
   final AuthService authService;
@@ -34,7 +32,6 @@ class HomeScreen extends StatefulWidget {
   final TagService tagService;
   final ReminderService? reminderService;
   final RecurringConfirmationService recurringConfirmationService;
-  final SmsTransactionService smsTransactionService;
   final ScrollController? scrollController;
 
   const HomeScreen({
@@ -48,7 +45,6 @@ class HomeScreen extends StatefulWidget {
     required this.tagService,
     this.reminderService,
     required this.recurringConfirmationService,
-    required this.smsTransactionService,
     this.scrollController,
   });
 
@@ -151,14 +147,6 @@ class _HomeScreenState extends State<HomeScreen>
                       transactionService: widget.transactionService,
                     ),
                   ),
-                // SMS transaction banner — hidden for now
-                // SliverToBoxAdapter(
-                //   child: SmsTransactionBanner(
-                //     smsService: widget.smsTransactionService,
-                //     transactionService: widget.transactionService,
-                //     accountService: widget.accountService,
-                //   ),
-                // ),
                 SliverToBoxAdapter(
                   child: _buildSectionHeader('Recent Transactions', recent),
                 ),
@@ -213,17 +201,16 @@ class _HomeScreenState extends State<HomeScreen>
                     onSeeAll: recurringTemplates.isEmpty
                         ? null
                         : () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => RecurringTransactionsScreen(
-                                  transactionService:
-                                      widget.transactionService,
-                                  currencyService: widget.currencyService,
-                                  categoryService: widget.categoryService,
-                                  accountService: widget.accountService,
-                                  tagService: widget.tagService,
-                                ),
+                            MaterialPageRoute(
+                              builder: (_) => RecurringTransactionsScreen(
+                                transactionService: widget.transactionService,
+                                currencyService: widget.currencyService,
+                                categoryService: widget.categoryService,
+                                accountService: widget.accountService,
+                                tagService: widget.tagService,
                               ),
                             ),
+                          ),
                   ),
                 ),
                 if (recurringTemplates.isEmpty)
@@ -715,9 +702,7 @@ class _HomeScreenState extends State<HomeScreen>
     final amountColor = tx.isIncome
         ? const Color(0xFF2D9E6B)
         : AppColors.textPrimary;
-    final cat = tx.resolveCategory(
-      (id) => widget.categoryService.getById(id),
-    );
+    final cat = tx.resolveCategory((id) => widget.categoryService.getById(id));
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, isFirst ? 0 : 0, 20, isLast ? 0 : 0),
@@ -747,11 +732,7 @@ class _HomeScreenState extends State<HomeScreen>
                   color: cat.color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(
-                  cat.icon,
-                  color: cat.color,
-                  size: 22,
-                ),
+                child: Icon(cat.icon, color: cat.color, size: 22),
               ),
               const SizedBox(width: 14),
 
@@ -911,9 +892,7 @@ class _HomeScreenState extends State<HomeScreen>
     final amountColor = tx.isIncome
         ? const Color(0xFF2D9E6B)
         : AppColors.textPrimary;
-    final cat = tx.resolveCategory(
-      (id) => widget.categoryService.getById(id),
-    );
+    final cat = tx.resolveCategory((id) => widget.categoryService.getById(id));
 
     // Format frequency label
     String frequencyLabel = '';
@@ -980,11 +959,7 @@ class _HomeScreenState extends State<HomeScreen>
                         color: cat.color.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(
-                        cat.icon,
-                        color: cat.color,
-                        size: 22,
-                      ),
+                      child: Icon(cat.icon, color: cat.color, size: 22),
                     ),
                     Positioned(
                       right: -4,

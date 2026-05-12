@@ -1,0 +1,9 @@
+name: screenshot_generator
+description: Generates Play Store screenshots for SpendFlux
+version: 1.0.0
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  image: ^4.2.0

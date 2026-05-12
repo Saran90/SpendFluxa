@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpendFlux - Accounts Overview</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .phone-container {
+            width: 375px;
+            height: 812px;
+            background: #000;
+            border-radius: 40px;
+            padding: 8px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background: #F7FAFA;
+            border-radius: 32px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .status-bar {
+            height: 44px;
+            background: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A2E44;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+        }
+
+        .accounts-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 60px 20px 20px;
+            background: white;
+        }
+
+        .back-btn {
+            font-size: 20px;
+            color: #1A2E44;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .accounts-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1A2E44;
+        }
+
+        .add-btn {
+            font-size: 20px;
+            color: #4ECDC4;
+            font-weight: 600;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .total-balance {
+            padding: 0 20px 16px;
+            background: white;
+        }
+
+        .total-label {
+            font-size: 13px;
+            color: #6B7C93;
+            margin-bottom: 4px;
+        }
+
+        .total-amount {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1A2E44;
+        }
+
+        .accounts-list {
+            padding: 0 20px;
+        }
+
+        .account-card {
+            background: white;
+            padding: 20px;
+            border-radius: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .account-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+        }
+
+        .account-card.bank::before {
+            background: #4ECDC4;
+        }
+
+        .account-card.credit::before {
+            background: #FF6B6B;
+        }
+
+        .account-card.cash::before {
+            background: #2D9E6B;
+        }
+
+        .account-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .account-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .bank-icon { background: rgba(78, 205, 196, 0.12); color: #4ECDC4; }
+        .credit-icon { background: rgba(255, 107, 107, 0.12); color: #FF6B6B; }
+        .cash-icon { background: rgba(45, 158, 107, 0.12); color: #2D9E6B; }
+
+        .account-details {
+            flex: 1;
+        }
+
+        .account-name {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1A2E44;
+            margin-bottom: 2px;
+        }
+
+        .account-type {
+            font-size: 12px;
+            color: #6B7C93;
+        }
+
+        .account-balance {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1A2E44;
+            margin-bottom: 8px;
+        }
+
+        .balance-negative {
+            color: #FF6B6B;
+        }
+
+        .balance-positive {
+            color: #2D9E6B;
+        }
+
+        .account-number {
+            font-size: 12px;
+            color: #B0BEC5;
+            font-family: 'Courier New', monospace;
+            margin-bottom: 4px;
+        }
+
+        .due-date {
+            font-size: 12px;
+            color: #FF6B6B;
+            font-weight: 600;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 20px 12px;
+        }
+
+        .section-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #1A2E44;
+        }
+
+        .see-all {
+            font-size: 13px;
+            font-weight: 600;
+            color: #4ECDC4;
+        }
+
+        .activity-list {
+            padding: 0 20px;
+        }
+
+        .activity-item {
+            background: white;
+            padding: 14px 16px;
+            border-radius: 16px;
+            margin-bottom: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .activity-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .activity-details {
+            flex: 1;
+        }
+
+        .activity-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1A2E44;
+            margin-bottom: 2px;
+        }
+
+        .activity-account {
+            font-size: 11px;
+            color: #6B7C93;
+        }
+
+        .activity-amount {
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .amount-positive { color: #2D9E6B; }
+        .amount-negative { color: #1A2E44; }
+    </style>
+</head>
+<body>
+    <div class="phone-container">
+        <div class="phone-screen">
+            <div class="status-bar">
+                <span>9:41</span>
+                <span>📶 📶 🔋</span>
+            </div>
+            
+            <div class="accounts-header">
+                <div class="back-btn">←</div>
+                <div class="accounts-title">Accounts</div>
+                <div class="add-btn">+</div>
+            </div>
+            
+            <div class="total-balance">
+                <div class="total-label">Total Balance</div>
+                <div class="total-amount">₹41,730</div>
+            </div>
+            
+            <div class="accounts-list">
+                <div class="account-card bank">
+                    <div class="account-header">
+                        <div class="account-icon bank-icon">🏦</div>
+                        <div class="account-details">
+                            <div class="account-name">HDFC Bank</div>
+                            <div class="account-type">Savings Account</div>
+                        </div>
+                    </div>
+                    <div class="account-balance">₹45,230</div>
+                    <div class="account-number">••••••••••••3456</div>
+                </div>
+                
+                <div class="account-card credit">
+                    <div class="account-header">
+                        <div class="account-icon credit-icon">💳</div>
+                        <div class="account-details">
+                            <div class="account-name">ICICI Credit Card</div>
+                            <div class="account-type">Credit Card</div>
+                        </div>
+                    </div>
+                    <div class="account-balance balance-negative">-₹5,500</div>
+                    <div class="account-number">••••••••••••7890</div>
+                    <div class="due-date">Due: Dec 25, 2024</div>
+                </div>
+                
+                <div class="account-card cash">
+                    <div class="account-header">
+                        <div class="account-icon cash-icon">💵</div>
+                        <div class="account-details">
+                            <div class="account-name">Cash</div>
+                            <div class="account-type">Physical Cash</div>
+                        </div>
+                    </div>
+                    <div class="account-balance balance-positive">₹2,000</div>
+                </div>
+            </div>
+            
+            <div class="section-header">
+                <div class="section-title">Recent Activity</div>
+                <div class="see-all">See all</div>
+            </div>
+            
+            <div class="activity-list">
+                <div class="activity-item">
+                    <div class="activity-icon food-icon" style="background: rgba(255, 107, 107, 0.12); color: #FF6B6B;">🍕</div>
+                    <div class="activity-details">
+                        <div class="activity-title">Coffee & Snacks</div>
+                        <div class="activity-account">HDFC Bank</div>
+                    </div>
+                    <div class="activity-amount amount-negative">-₹250</div>
+                </div>
+                
+                <div class="activity-item">
+                    <div class="activity-icon income-icon" style="background: rgba(45, 158, 107, 0.12); color: #2D9E6B;">💰</div>
+                    <div class="activity-details">
+                        <div class="activity-title">Salary Credit</div>
+                        <div class="activity-account">HDFC Bank</div>
+                    </div>
+                    <div class="activity-amount amount-positive">+₹50,000</div>
+                </div>
+                
+                <div class="activity-item">
+                    <div class="activity-icon shopping-icon" style="background: rgba(255, 190, 11, 0.12); color: #FFBE0B;">🛒</div>
+                    <div class="activity-details">
+                        <div class="activity-title">Online Shopping</div>
+                        <div class="activity-account">ICICI Card</div>
+                    </div>
+                    <div class="activity-amount amount-negative">-₹1,200</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

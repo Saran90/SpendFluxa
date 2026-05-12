@@ -1,0 +1,44 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║           PLAY STORE ICON - QUICK REFERENCE CARD                     ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+📋 REQUIREMENTS:
+   • Format: PNG or JPEG
+   • Size: Up to 1 MB
+   • Dimensions: 512 × 512 pixels
+   • No rounded corners
+
+🚀 FASTEST METHOD (5 minutes):
+
+   1. Go to: https://www.iloveimg.com/resize-image
+   
+   2. Upload: assets/icons/app_icon.png
+   
+   3. Resize to: 512 × 512 pixels
+   
+   4. Download as: play_store_icon_512.png
+   
+   5. Upload to Play Console
+
+📤 WHERE TO UPLOAD:
+   Google Play Console → Store presence → Main store listing → App icon
+
+✅ VERIFY:
+   • Dimensions: 512 × 512 ✓
+   • File size: < 1 MB ✓
+   • Format: PNG ✓
+   • Looks good at small size ✓
+
+🔧 ALTERNATIVE METHODS:
+   • Run: create_icon.bat (automated)
+   • Use: GIMP, Paint.NET, or Photoshop
+   • See: PLAY_STORE_ICON_GUIDE.md for details
+
+📁 YOUR CURRENT ICON:
+   Location: assets/icons/app_icon.png
+   Size: ~66 KB
+   Color: #4ECDC4 (Teal)
+
+═══════════════════════════════════════════════════════════════════════
+
+Need detailed help? Open: PLAY_STORE_ICON_GUIDE.md

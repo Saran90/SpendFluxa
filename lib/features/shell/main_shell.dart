@@ -7,7 +7,6 @@ import '../../core/services/biometric_service.dart';
 import '../../core/services/budget_service.dart';
 import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
-import '../../core/services/sms_transaction_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/services/reminder_service.dart';
@@ -232,7 +231,6 @@ class _MainShellState extends State<MainShell>
               tagService: widget.tagService,
               reminderService: widget.reminderService,
               recurringConfirmationService: widget.recurringConfirmationService,
-              smsTransactionService: SmsTransactionService(),
               scrollController: _scrollControllers[0],
             ),
             0,

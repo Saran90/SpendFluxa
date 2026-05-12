@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpendFlux - Analytics</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .phone-container {
+            width: 375px;
+            height: 812px;
+            background: #000;
+            border-radius: 40px;
+            padding: 8px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background: #F7FAFA;
+            border-radius: 32px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .status-bar {
+            height: 44px;
+            background: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A2E44;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+        }
+
+        .analytics-header {
+            display: flex;
+            align-items: center;
+            padding: 60px 20px 20px;
+            background: white;
+        }
+
+        .back-btn {
+            font-size: 20px;
+            color: #1A2E44;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .analytics-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1A2E44;
+            margin-left: 12px;
+        }
+
+        .month-selector {
+            margin: 16px 20px 8px;
+            background: white;
+            border-radius: 14px;
+            padding: 12px 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .month-nav {
+            font-size: 20px;
+            color: #1A2E44;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .month-label {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1A2E44;
+        }
+
+        .summary-chips {
+            display: flex;
+            gap: 12px;
+            padding: 4px 20px 16px;
+        }
+
+        .summary-chip {
+            flex: 1;
+            background: white;
+            padding: 16px;
+            border-radius: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+
+        .chip-label {
+            font-size: 12px;
+            color: #6B7C93;
+            margin-bottom: 4px;
+        }
+
+        .chip-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1A2E44;
+        }
+
+        .chart-card {
+            margin: 0 20px 16px;
+            background: white;
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+        .section-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: #6B7C93;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+        }
+
+        .pie-chart {
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            background: conic-gradient(
+                #FF6B6B 0deg 162deg,
+                #4ECDC4 162deg 252deg,
+                #FFBE0B 252deg 306deg,
+                #2D9E6B 306deg 342deg,
+                #95A5A6 342deg 360deg
+            );
+            margin: 0 auto 20px;
+            position: relative;
+        }
+
+        .pie-chart::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 50%;
+        }
+
+        .chart-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1;
+        }
+
+        .chart-total {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1A2E44;
+        }
+
+        .chart-label {
+            font-size: 11px;
+            color: #6B7C93;
+        }
+
+        .legend {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .legend-text {
+            font-size: 12px;
+            color: #6B7C93;
+            flex: 1;
+        }
+
+        .legend-percent {
+            font-size: 11px;
+            font-weight: 600;
+            color: #B0BEC5;
+        }
+
+        .color-food { background: #FF6B6B; }
+        .color-transport { background: #4ECDC4; }
+        .color-shopping { background: #FFBE0B; }
+        .color-entertainment { background: #2D9E6B; }
+        .color-other { background: #95A5A6; }
+
+        .category-list {
+            padding: 0 20px;
+        }
+
+        .category-item {
+            background: white;
+            padding: 16px;
+            border-radius: 16px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+
+        .category-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .category-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .food-cat { background: rgba(255, 107, 107, 0.12); color: #FF6B6B; }
+        .transport-cat { background: rgba(78, 205, 196, 0.12); color: #4ECDC4; }
+        .shopping-cat { background: rgba(255, 190, 11, 0.12); color: #FFBE0B; }
+
+        .category-details {
+            flex: 1;
+        }
+
+        .category-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A2E44;
+        }
+
+        .category-amount {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1A2E44;
+        }
+
+        .category-percent {
+            font-size: 12px;
+            font-weight: 600;
+            color: #FF6B6B;
+            width: 40px;
+            text-align: right;
+        }
+
+        .category-progress {
+            height: 6px;
+            background: #F7FAFA;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill-food {
+            height: 100%;
+            background: #FF6B6B;
+            width: 89%;
+            border-radius: 4px;
+        }
+
+        .progress-fill-transport {
+            height: 100%;
+            background: #4ECDC4;
+            width: 62%;
+            border-radius: 4px;
+        }
+
+        .progress-fill-shopping {
+            height: 100%;
+            background: #FFBE0B;
+            width: 59%;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone-container">
+        <div class="phone-screen">
+            <div class="status-bar">
+                <span>9:41</span>
+                <span>📶 📶 🔋</span>
+            </div>
+            
+            <div class="analytics-header">
+                <div class="back-btn">←</div>
+                <div class="analytics-title">Analytics</div>
+            </div>
+            
+            <div class="month-selector">
+                <div class="month-nav">◀</div>
+                <div class="month-label">December 2024</div>
+                <div class="month-nav">▶</div>
+            </div>
+            
+            <div class="summary-chips">
+                <div class="summary-chip">
+                    <div class="chip-label">Total Spent</div>
+                    <div class="chip-value">₹19,770</div>
+                </div>
+                <div class="summary-chip">
+                    <div class="chip-label">Categories</div>
+                    <div class="chip-value">6</div>
+                </div>
+            </div>
+            
+            <div class="chart-card">
+                <div class="section-label">SPENDING BREAKDOWN</div>
+                <div class="pie-chart">
+                    <div class="chart-center">
+                        <div class="chart-total">₹19,770</div>
+                        <div class="chart-label">Total</div>
+                    </div>
+                </div>
+                
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color color-food"></div>
+                        <div class="legend-text">Food & Dining</div>
+                        <div class="legend-percent">45%</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color color-transport"></div>
+                        <div class="legend-text">Transport</div>
+                        <div class="legend-percent">25%</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color color-shopping"></div>
+                        <div class="legend-text">Shopping</div>
+                        <div class="legend-percent">15%</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color color-entertainment"></div>
+                        <div class="legend-text">Entertainment</div>
+                        <div class="legend-percent">10%</div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color color-other"></div>
+                        <div class="legend-text">Other</div>
+                        <div class="legend-percent">5%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <div class="section-label">SPENDING BY CATEGORY</div>
+                
+                <div class="category-item">
+                    <div class="category-header">
+                        <div class="category-icon food-cat">🍽️</div>
+                        <div class="category-details">
+                            <div class="category-name">Food & Dining</div>
+                        </div>
+                        <div class="category-amount">₹8,897</div>
+                        <div class="category-percent">45%</div>
+                    </div>
+                    <div class="category-progress">
+                        <div class="progress-fill-food"></div>
+                    </div>
+                </div>
+
+                <div class="category-item">
+                    <div class="category-header">
+                        <div class="category-icon transport-cat">🚗</div>
+                        <div class="category-details">
+                            <div class="category-name">Transport</div>
+                        </div>
+                        <div class="category-amount">₹4,943</div>
+                        <div class="category-percent">25%</div>
+                    </div>
+                    <div class="category-progress">
+                        <div class="progress-fill-transport"></div>
+                    </div>
+                </div>
+
+                <div class="category-item">
+                    <div class="category-header">
+                        <div class="category-icon shopping-cat">🛒</div>
+                        <div class="category-details">
+                            <div class="category-name">Shopping</div>
+                        </div>
+                        <div class="category-amount">₹2,966</div>
+                        <div class="category-percent">15%</div>
+                    </div>
+                    <div class="category-progress">
+                        <div class="progress-fill-shopping"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

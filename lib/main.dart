@@ -9,7 +9,6 @@ import 'core/services/biometric_service.dart';
 import 'core/services/budget_service.dart';
 import 'core/services/category_service.dart';
 import 'core/services/currency_service.dart';
-// import 'core/services/sms_transaction_service.dart'; // hidden for now
 import 'core/services/tag_service.dart';
 import 'core/services/transaction_service.dart';
 import 'core/services/notification_service.dart';
@@ -31,9 +30,6 @@ Future<void> main() async {
 
   // Initialize notification service
   await NotificationService().initialize();
-
-  // SMS tracking — disabled for now
-  // await SmsTransactionService().initialize();
 
   runApp(const SpendFluxApp());
 }
