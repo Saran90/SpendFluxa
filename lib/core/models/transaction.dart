@@ -224,7 +224,8 @@ class Transaction {
 
   // Recurring transaction fields
   final bool isRecurring; // If true, this is a recurring transaction
-  final String? recurringFrequency; // 'daily', 'weekly', 'monthly', 'yearly'
+  final String?
+  recurringFrequency; // 'daily', 'weekly', 'monthly', 'quarterly', 'yearly'
   final DateTime?
   recurringEndDate; // When to stop creating recurring transactions
   final String?

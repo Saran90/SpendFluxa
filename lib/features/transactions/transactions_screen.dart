@@ -555,7 +555,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
         itemCount: categories.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (_, i) {
           final cat = categories[i];
           final selected = _selectedCategory == cat;

@@ -14,10 +14,12 @@ import '../../core/services/transaction_service.dart';
 import '../../core/services/reminder_service.dart';
 import '../../core/services/recurring_confirmation_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/recurring_utils.dart';
 import '../accounts/account_detail_screen.dart';
 import '../accounts/accounts_screen.dart';
 import '../analytics/analytics_screen.dart';
 import '../transactions/transaction_detail_screen.dart';
+import '../transactions/recurring_transaction_detail_screen.dart';
 import '../transactions/recurring_transactions_screen.dart';
 import '../reminders/reminder_banner.dart';
 import '../reminders/recurring_confirmation_banner.dart';
@@ -218,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen>
                 else
                   SliverToBoxAdapter(
                     child: SizedBox(
-                      height: 140,
+                      height: 160,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -505,19 +507,34 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _openTransactionDetail(Transaction tx) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TransactionDetailScreen(
-          transaction: tx,
-          transactionService: widget.transactionService,
-          categoryService: widget.categoryService,
-          currencyService: widget.currencyService,
-          accountService: widget.accountService,
-          tagService: widget.tagService,
-          reminderService: widget.reminderService,
+    if (tx.isRecurring) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => RecurringTransactionDetailScreen(
+            transaction: tx,
+            transactionService: widget.transactionService,
+            categoryService: widget.categoryService,
+            currencyService: widget.currencyService,
+            accountService: widget.accountService,
+            tagService: widget.tagService,
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TransactionDetailScreen(
+            transaction: tx,
+            transactionService: widget.transactionService,
+            categoryService: widget.categoryService,
+            currencyService: widget.currencyService,
+            accountService: widget.accountService,
+            tagService: widget.tagService,
+            reminderService: widget.reminderService,
+          ),
+        ),
+      );
+    }
   }
 
   void _openAnalytics() {
@@ -906,6 +923,9 @@ class _HomeScreenState extends State<HomeScreen>
       case 'monthly':
         frequencyLabel = 'Monthly';
         break;
+      case 'quarterly':
+        frequencyLabel = 'Quarterly';
+        break;
       case 'yearly':
         frequencyLabel = 'Yearly';
         break;
@@ -916,7 +936,8 @@ class _HomeScreenState extends State<HomeScreen>
     return GestureDetector(
       onTap: () => _openTransactionDetail(tx),
       child: Container(
-        width: 200,
+        width: 280,
+        height: 160,
         margin: EdgeInsets.only(right: isLast ? 0 : 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -1002,7 +1023,7 @@ class _HomeScreenState extends State<HomeScreen>
               ],
             ),
 
-            // Middle: Title
+            // Middle: Title and dates
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1016,14 +1037,30 @@ class _HomeScreenState extends State<HomeScreen>
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (tx.recurringEndDate != null) ...[
-                  const SizedBox(height: 4),
+                const SizedBox(height: 6),
+                // Next payment date
+                if (RecurringUtils.getNextOccurrence(tx) != null) ...[
                   Text(
-                    'Until ${DateFormat('MMM d, yyyy').format(tx.recurringEndDate!)}',
+                    'Next: ${DateFormat('MMM d').format(RecurringUtils.getNextOccurrence(tx)!)}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                ],
+                if (tx.recurringEndDate != null) ...[
+                  Text(
+                    'Until ${DateFormat('MMM d').format(tx.recurringEndDate!)}',
                     style: const TextStyle(
                       fontSize: 11,
                       color: AppColors.textSecondary,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ],

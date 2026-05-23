@@ -13,6 +13,7 @@ import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../accounts/add_account_sheet.dart';
 import '../tags/add_tag_sheet.dart';
+import 'calculator_screen.dart';
 
 // Wraps either a built-in TransactionCategory or a user CustomCategory so the
 // grid can render both with the same code.
@@ -186,7 +187,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
           ...widget.categoryService.expenseCategories,
           ...widget.categoryService.incomeCategories,
         ];
-        final found = allCustom.where((c) => c.id == tx.customCategoryId).firstOrNull;
+        final found = allCustom
+            .where((c) => c.id == tx.customCategoryId)
+            .firstOrNull;
         if (found != null) {
           _selectedCustomCategory = found;
           _selectedItem = _CategoryItem.custom(found);
@@ -506,7 +509,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: DateTime.now().add(
+        const Duration(days: 3650),
+      ), // Allow up to 10 years in future
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: ColorScheme.light(
@@ -519,6 +524,21 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       ),
     );
     if (picked != null) setState(() => _selectedDate = picked);
+  }
+
+  Future<void> _openCalculator() async {
+    final currentAmount = double.tryParse(_amountController.text.trim());
+    final result = await showModalBottomSheet<double>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => CalculatorBottomSheet(initialAmount: currentAmount),
+    );
+    if (result != null) {
+      setState(() {
+        _amountController.text = result.toStringAsFixed(2);
+      });
+    }
   }
 
   // ΓöÇΓöÇ Build ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -689,6 +709,22 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                         errorStyle: const TextStyle(
                           color: Colors.white,
                           fontSize: 11,
+                        ),
+                        suffixIcon: Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: IconButton(
+                            icon: Icon(
+                              Icons.calculate_rounded,
+                              color: Colors.white.withValues(alpha: 0.8),
+                              size: 28,
+                            ),
+                            onPressed: _openCalculator,
+                            tooltip: 'Open Calculator',
+                          ),
+                        ),
+                        suffixIconConstraints: const BoxConstraints(
+                          minWidth: 48,
+                          minHeight: 48,
                         ),
                       ),
                       validator: (v) {
@@ -2054,6 +2090,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                       _frequencyChip('Daily', 'daily'),
                       _frequencyChip('Weekly', 'weekly'),
                       _frequencyChip('Monthly', 'monthly'),
+                      _frequencyChip('Quarterly', 'quarterly'),
                       _frequencyChip('Yearly', 'yearly'),
                     ],
                   ),

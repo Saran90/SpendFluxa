@@ -7,6 +7,7 @@ import '../../core/services/currency_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/recurring_utils.dart';
 import 'add_transaction_screen.dart';
 
 class RecurringTransactionDetailScreen extends StatelessWidget {
@@ -78,7 +79,8 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
                   _buildAccountCard(),
                   const SizedBox(height: 14),
                 ],
-                if (transaction.note != null && transaction.note!.isNotEmpty) ...[
+                if (transaction.note != null &&
+                    transaction.note!.isNotEmpty) ...[
                   _buildNoteCard(),
                   const SizedBox(height: 14),
                 ],
@@ -253,6 +255,8 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
   }
 
   Widget _buildRecurringCard() {
+    final nextOccurrence = RecurringUtils.getNextOccurrence(transaction);
+
     return _Card(
       child: Column(
         children: [
@@ -262,8 +266,17 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
             label: 'Frequency',
             value: _frequencyLabel,
           ),
+          _divider(),
+          _InfoRow(
+            icon: Icons.calendar_today_rounded,
+            iconColor: AppColors.primary,
+            label: 'Next Payment',
+            value: nextOccurrence != null
+                ? DateFormat('MMM d, yyyy').format(nextOccurrence)
+                : 'No upcoming occurrence',
+          ),
+          _divider(),
           if (transaction.recurringEndDate != null) ...[
-            _divider(),
             _InfoRow(
               icon: Icons.event_rounded,
               iconColor: AppColors.primary,
@@ -273,7 +286,6 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
               ).format(transaction.recurringEndDate!),
             ),
           ] else ...[
-            _divider(),
             const _InfoRow(
               icon: Icons.all_inclusive_rounded,
               iconColor: AppColors.primary,

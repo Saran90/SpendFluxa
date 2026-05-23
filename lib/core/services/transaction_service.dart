@@ -228,10 +228,7 @@ class TransactionService extends ChangeNotifier {
   bool _isVisible(Transaction t) {
     // Hide recurring template/parent transactions
     if (t.isRecurring && t.recurringParentId == null) return false;
-    // Hide future recurring instances
-    if (t.recurringParentId != null) {
-      return t.date.isBefore(DateTime.now().add(const Duration(days: 1)));
-    }
+    // Show all recurring instances (past and future)
     return true;
   }
 

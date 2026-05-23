@@ -480,7 +480,7 @@ final _recurringSteps = [
   const WalkthroughStep(
     title: 'Create a Recurring Transaction',
     description:
-        'When adding a transaction, enable the "Recurring" toggle. Choose the frequency (daily, weekly, monthly, or yearly) and optionally set an end date.',
+        'When adding a transaction, enable the "Recurring" toggle. Choose the frequency (daily, weekly, monthly, quarterly, or yearly) and optionally set an end date.',
     icon: Icons.toggle_on_rounded,
     color: AppColors.primary,
     visualHint: 'Enable Recurring Toggle',

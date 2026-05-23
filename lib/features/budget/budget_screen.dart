@@ -73,14 +73,21 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
   void _nextMonth() {
     final next = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
-    if (!next.isAfter(DateTime.now())) {
-      setState(() => _selectedMonth = next);
-    }
+    setState(() => _selectedMonth = next);
   }
 
-  bool get _isCurrentMonth {
-    final now = DateTime.now();
-    return _year == now.year && _month == now.month;
+  /// Navigate to a specific month via date picker
+  void _selectMonth(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedMonth,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      helpText: 'Select Month',
+    );
+    if (picked != null) {
+      setState(() => _selectedMonth = DateTime(picked.year, picked.month));
+    }
   }
 
   @override
@@ -292,24 +299,25 @@ class _BudgetScreenState extends State<BudgetScreen> {
               onPressed: _prevMonth,
             ),
             Expanded(
-              child: Text(
-                DateFormat('MMMM yyyy').format(_selectedMonth),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+              child: GestureDetector(
+                onTap: () => _selectMonth(context),
+                child: Text(
+                  DateFormat('MMMM yyyy').format(_selectedMonth),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
             ),
             IconButton(
               icon: Icon(
                 Icons.chevron_right_rounded,
-                color: _isCurrentMonth
-                    ? AppColors.textLight
-                    : AppColors.textPrimary,
+                color: AppColors.textPrimary,
               ),
-              onPressed: _isCurrentMonth ? null : _nextMonth,
+              onPressed: _nextMonth,
             ),
           ],
         ),

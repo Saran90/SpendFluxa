@@ -274,6 +274,11 @@ class RecurringConfirmationBanner extends StatelessWidget {
 
     await transactionService.addTransaction(newTransaction);
 
+    // Update the template's date to the next occurrence
+    final nextDate = _getNextDate(dueDate, template.recurringFrequency!);
+    final updatedTemplate = template.copyWith(date: nextDate);
+    await transactionService.updateRecurringTemplate(updatedTemplate);
+
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -339,16 +344,39 @@ class RecurringConfirmationBanner extends StatelessWidget {
   DateTime _getNextDate(DateTime current, String frequency) {
     switch (frequency) {
       case 'daily':
-        return DateTime(current.year, current.month, current.day + 1);
+        return current.add(const Duration(days: 1));
       case 'weekly':
-        return DateTime(current.year, current.month, current.day + 7);
+        return current.add(const Duration(days: 7));
       case 'monthly':
-        return DateTime(current.year, current.month + 1, current.day);
+        return _addMonths(current, 1);
+      case 'quarterly':
+        return _addMonths(current, 3);
       case 'yearly':
-        return DateTime(current.year + 1, current.month, current.day);
+        return _addMonths(current, 12);
       default:
         return current;
     }
+  }
+
+  /// Helper to safely add months, handling day overflow
+  DateTime _addMonths(DateTime date, int months) {
+    var month = date.month + months;
+    var year = date.year;
+
+    // Handle year overflow
+    while (month > 12) {
+      month -= 12;
+      year += 1;
+    }
+
+    // Handle day overflow (e.g., Jan 31 + 1 month = Feb 28/29)
+    var day = date.day;
+    final lastDayOfMonth = DateTime(year, month + 1, 0).day;
+    if (day > lastDayOfMonth) {
+      day = lastDayOfMonth;
+    }
+
+    return DateTime(year, month, day);
   }
 }
 
