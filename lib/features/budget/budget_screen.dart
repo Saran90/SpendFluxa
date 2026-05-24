@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import '../../core/models/custom_category.dart';
 import '../../core/models/transaction.dart';
 import '../../core/services/budget_service.dart';
+import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
 
-// Expense-only categories shown in the budget screen
+// Expense-only built-in categories shown in the budget screen
 const _budgetableCategories = [
   TransactionCategory.food,
   TransactionCategory.grocery,
@@ -32,6 +34,7 @@ class BudgetScreen extends StatefulWidget {
   final BudgetService budgetService;
   final TransactionService transactionService;
   final CurrencyService currencyService;
+  final CategoryService categoryService;
   final ScrollController? scrollController;
 
   const BudgetScreen({
@@ -39,6 +42,7 @@ class BudgetScreen extends StatefulWidget {
     required this.budgetService,
     required this.transactionService,
     required this.currencyService,
+    required this.categoryService,
     this.scrollController,
   });
 
@@ -99,6 +103,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
           widget.budgetService,
           widget.currencyService,
           widget.transactionService,
+          widget.categoryService,
         ]),
         builder: (context, _) {
           final fmt = widget.currencyService.formatter;
@@ -108,14 +113,26 @@ class _BudgetScreenState extends State<BudgetScreen> {
             _month,
           );
 
-          // Per-category spending
+          // Per built-in-category spending
           final catSpent = <TransactionCategory, double>{};
+          // Per custom-category spending (keyed by customCategoryId)
+          final customCatSpent = <String, double>{};
+
           for (final tx
               in widget.transactionService
                   .transactionsForMonth(_year, _month)
                   .where((t) => t.isExpense)) {
-            catSpent[tx.category] = (catSpent[tx.category] ?? 0) + tx.amount;
+            if (tx.customCategoryId != null) {
+              customCatSpent[tx.customCategoryId!] =
+                  (customCatSpent[tx.customCategoryId!] ?? 0) + tx.amount;
+            } else {
+              catSpent[tx.category] = (catSpent[tx.category] ?? 0) + tx.amount;
+            }
           }
+
+          // Only expense custom categories
+          final customExpenseCategories =
+              widget.categoryService.expenseCategories;
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -202,6 +219,55 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         );
                       }, childCount: _budgetableCategories.length),
                     ),
+
+                    // ── Custom category rows ────────────────────────────
+                    if (customExpenseCategories.isNotEmpty) ...[
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                          child: Row(
+                            children: [
+                              const Text(
+                                'CUSTOM CATEGORIES',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textSecondary,
+                                  letterSpacing: 1.0,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate((ctx, i) {
+                          final cat = customExpenseCategories[i];
+                          final limit = budget.customCategoryLimits[cat.id];
+                          final catSpending = customCatSpent[cat.id] ?? 0.0;
+                          return _CustomCategoryBudgetRow(
+                            category: cat,
+                            limit: limit,
+                            spent: catSpending,
+                            fmt: fmt,
+                            onTap: () => _showAmountSheet(
+                              context,
+                              title: cat.label,
+                              icon: cat.icon,
+                              iconColor: cat.color,
+                              current: limit,
+                              onSave: (v) =>
+                                  widget.budgetService.setCustomCategoryLimit(
+                                    _year,
+                                    _month,
+                                    cat.id,
+                                    v,
+                                  ),
+                            ),
+                          );
+                        }, childCount: customExpenseCategories.length),
+                      ),
+                    ],
 
                     const SliverToBoxAdapter(child: SizedBox(height: 100)),
                   ],
@@ -391,6 +457,14 @@ class _BudgetScreenState extends State<BudgetScreen> {
       final budget = widget.budgetService.budgetFor(_year, _month);
       for (final cat in List.of(budget.categoryLimits.keys)) {
         await widget.budgetService.setCategoryLimit(_year, _month, cat, null);
+      }
+      for (final id in List.of(budget.customCategoryLimits.keys)) {
+        await widget.budgetService.setCustomCategoryLimit(
+          _year,
+          _month,
+          id,
+          null,
+        );
       }
     }
   }
@@ -705,6 +779,164 @@ class _CategoryBudgetRow extends StatelessWidget {
 
             const SizedBox(width: 10),
             // Edit / Add indicator
+            Icon(
+              hasLimit ? Icons.edit_rounded : Icons.add_circle_outline_rounded,
+              size: 18,
+              color: hasLimit ? AppColors.primary : AppColors.textLight,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Custom category budget row ────────────────────────────────────────────────
+
+class _CustomCategoryBudgetRow extends StatelessWidget {
+  final CustomCategory category;
+  final double? limit;
+  final double spent;
+  final NumberFormat fmt;
+  final VoidCallback onTap;
+
+  const _CustomCategoryBudgetRow({
+    required this.category,
+    required this.limit,
+    required this.spent,
+    required this.fmt,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasLimit = limit != null && limit! > 0;
+    final ratio = hasLimit ? (spent / limit!).clamp(0.0, 1.0) : 0.0;
+    final isOver = hasLimit && spent > limit!;
+
+    Color barColor() {
+      if (isOver) return const Color(0xFFFF5252);
+      if (ratio > 0.8) return const Color(0xFFFFD740);
+      return category.color;
+    }
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Icon
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: category.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Icon(category.icon, color: category.color, size: 22),
+            ),
+            const SizedBox(width: 14),
+
+            // Label + bar
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                category.label,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'Custom',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        hasLimit
+                            ? '${fmt.format(spent)} / ${fmt.format(limit!)}'
+                            : spent > 0
+                            ? fmt.format(spent)
+                            : 'No limit',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isOver
+                              ? AppColors.accent
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (hasLimit) ...[
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: ratio,
+                        minHeight: 5,
+                        backgroundColor: AppColors.background,
+                        valueColor: AlwaysStoppedAnimation<Color>(barColor()),
+                      ),
+                    ),
+                  ] else if (spent > 0) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tap to set a limit',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textLight,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 10),
             Icon(
               hasLimit ? Icons.edit_rounded : Icons.add_circle_outline_rounded,
               size: 18,

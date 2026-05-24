@@ -2,18 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/account.dart';
+import '../../core/models/credit_card_bill.dart';
 import '../../core/models/transaction.dart';
 import '../../core/services/account_service.dart';
+import '../../core/services/bill_generation_service.dart';
+import '../../core/services/credit_card_bill_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
 import 'add_account_sheet.dart';
+import 'bill_generation_dialog.dart';
+import 'bill_payment_sheet.dart';
 
-class AccountDetailScreen extends StatelessWidget {
+class AccountDetailScreen extends StatefulWidget {
   final Account account;
   final AccountService accountService;
   final TransactionService transactionService;
   final CurrencyService currencyService;
+  final CreditCardBillService billService;
+  final BillGenerationService billGenerationService;
 
   const AccountDetailScreen({
     super.key,
@@ -21,8 +28,15 @@ class AccountDetailScreen extends StatelessWidget {
     required this.accountService,
     required this.transactionService,
     required this.currencyService,
+    required this.billService,
+    required this.billGenerationService,
   });
 
+  @override
+  State<AccountDetailScreen> createState() => _AccountDetailScreenState();
+}
+
+class _AccountDetailScreenState extends State<AccountDetailScreen> {
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(
@@ -36,18 +50,21 @@ class AccountDetailScreen extends StatelessWidget {
       backgroundColor: AppColors.background,
       body: ListenableBuilder(
         listenable: Listenable.merge([
-          accountService,
-          transactionService,
-          currencyService,
+          widget.accountService,
+          widget.transactionService,
+          widget.currencyService,
+          widget.billService,
         ]),
         builder: (context, _) {
           // Always read the latest version of this account from the service
-          final current = accountService.all.firstWhere(
-            (a) => a.id == account.id,
-            orElse: () => account,
+          final current = widget.accountService.all.firstWhere(
+            (a) => a.id == widget.account.id,
+            orElse: () => widget.account,
           );
-          final fmt = currencyService.formatter;
-          final txs = transactionService.transactionsForAccount(current.id);
+          final fmt = widget.currencyService.formatter;
+          final txs = widget.transactionService.transactionsForAccount(
+            current.id,
+          );
 
           return CustomScrollView(
             physics: const BouncingScrollPhysics(),
@@ -160,7 +177,7 @@ class AccountDetailScreen extends StatelessWidget {
                       ),
                       onPressed: () => showAddAccountSheet(
                         context,
-                        accountService,
+                        widget.accountService,
                         editing: acc,
                       ),
                     ),
@@ -247,7 +264,9 @@ class AccountDetailScreen extends StatelessWidget {
 
                 // Balance / outstanding
                 Text(
-                  isCreditCard ? 'Outstanding' : 'Balance',
+                  isCreditCard
+                      ? (acc.balance < 0 ? 'Credit Balance' : 'Outstanding')
+                      : 'Balance',
                   style: TextStyle(
                     fontSize: 13,
                     color: Colors.white.withValues(alpha: 0.75),
@@ -256,11 +275,15 @@ class AccountDetailScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  fmt.format(acc.balance),
-                  style: const TextStyle(
+                  acc.balance < 0 && isCreditCard
+                      ? fmt.format(acc.balance.abs())
+                      : fmt.format(acc.balance),
+                  style: TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: acc.balance < 0 && isCreditCard
+                        ? const Color(0xFF2D9E6B) // Green for credit
+                        : Colors.white,
                     letterSpacing: -0.5,
                   ),
                 ),
@@ -276,10 +299,284 @@ class AccountDetailScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+
+                // Bill action button for credit cards
+                if (isCreditCard) ...[
+                  const SizedBox(height: 20),
+                  _buildBillActionButton(context, acc, fmt),
+                ],
               ],
             ),
           );
         }, // Builder
+      ),
+    );
+  }
+
+  // ── Bill action button ─────────────────────────────────────────────────────
+
+  Widget _buildBillActionButton(
+    BuildContext context,
+    Account creditCardAccount,
+    NumberFormat fmt,
+  ) {
+    // Check if bill date is set
+    if (creditCardAccount.billDate == null) {
+      return _buildGenerateBillButton(context, creditCardAccount);
+    }
+
+    // Check if a bill exists for this account
+    final latestBill = widget.billService.getLatestBillForAccount(
+      creditCardAccount.id,
+    );
+
+    if (latestBill == null) {
+      return _buildGenerateBillButton(context, creditCardAccount);
+    }
+
+    // Check if bill is fully paid
+    if (latestBill.status == BillStatus.paid) {
+      // Bill is paid, check if it's time for next bill
+      final now = DateTime.now();
+      final nextBillDate = DateTime(
+        latestBill.billDate.month == 12
+            ? latestBill.billDate.year + 1
+            : latestBill.billDate.year,
+        latestBill.billDate.month == 12 ? 1 : latestBill.billDate.month + 1,
+        creditCardAccount.billDate!,
+      );
+
+      if (now.day >= nextBillDate.day &&
+          (now.month > latestBill.billDate.month ||
+              now.year > latestBill.billDate.year)) {
+        return _buildGenerateBillButton(context, creditCardAccount);
+      }
+
+      // Bill is paid and it's not time for next bill yet
+      return const SizedBox.shrink();
+    }
+
+    // Bill exists and is not fully paid, show pay bill button
+    return _buildPayBillButton(context, creditCardAccount, fmt);
+  }
+
+  Widget _buildGenerateBillButton(
+    BuildContext context,
+    Account creditCardAccount,
+  ) {
+    return GestureDetector(
+      onTap: () => _generateBillManually(context, creditCardAccount),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.add_circle_rounded,
+              color: Colors.white.withValues(alpha: 0.9),
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Generate Bill',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.white.withValues(alpha: 0.95),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPayBillButton(
+    BuildContext context,
+    Account creditCardAccount,
+    NumberFormat fmt,
+  ) {
+    return GestureDetector(
+      onTap: () => _showPaymentSheet(context, creditCardAccount, fmt),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.payment_rounded,
+              color: Colors.white.withValues(alpha: 0.9),
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Pay Bill',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.white.withValues(alpha: 0.95),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _generateBillManually(
+    BuildContext context,
+    Account creditCardAccount,
+  ) async {
+    // Show dialog to get bill amount
+    showDialog(
+      context: context,
+      builder: (ctx) => BillGenerationDialog(
+        creditCardAccount: creditCardAccount,
+        defaultAmount: creditCardAccount.balance,
+        currencyService: widget.currencyService,
+        onBillGenerated: (amount) async {
+          final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+          try {
+            // Generate bill with custom amount
+            await widget.billGenerationService.generateBillWithAmount(
+              creditCardAccount,
+              amount,
+            );
+
+            // Refresh the screen
+            if (mounted) {
+              setState(() {});
+              scaffoldMessenger.showSnackBar(
+                SnackBar(
+                  content: const Text('Bill generated successfully'),
+                  backgroundColor: const Color(0xFF2D9E6B),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  margin: const EdgeInsets.all(16),
+                ),
+              );
+            }
+          } catch (e) {
+            if (mounted) {
+              scaffoldMessenger.showSnackBar(
+                SnackBar(
+                  content: Text('Error generating bill: $e'),
+                  backgroundColor: AppColors.accent,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  margin: const EdgeInsets.all(16),
+                ),
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+
+  // ── Payment sheet handler ──────────────────────────────────────────────────
+
+  void _showPaymentSheet(
+    BuildContext context,
+    Account creditCardAccount,
+    NumberFormat fmt,
+  ) {
+    // For credit cards, the account.balance represents the outstanding balance
+    final outstandingBalance = creditCardAccount.balance;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => BillPaymentSheet(
+        creditCardAccount: creditCardAccount,
+        outstandingBalance: outstandingBalance,
+        currencyService: widget.currencyService,
+        onPaymentSubmitted: (amount, note) async {
+          // Get the latest bill for this account
+          final latestBill = widget.billService.getLatestBillForAccount(
+            creditCardAccount.id,
+          );
+
+          if (latestBill == null) {
+            _showSnackBar(
+              context,
+              'No bills found for this account',
+              isError: true,
+            );
+            return;
+          }
+
+          try {
+            // Record the payment
+            await widget.billService.recordPayment(
+              latestBill.id,
+              amount,
+              DateTime.now(),
+              note,
+            );
+
+            // Update account balance (reduce outstanding)
+            await widget.accountService.adjustBalance(
+              creditCardAccount.id,
+              -amount,
+            );
+
+            if (context.mounted) {
+              _showSnackBar(
+                context,
+                'Payment of ${fmt.format(amount)} recorded successfully',
+              );
+            }
+          } catch (e) {
+            if (context.mounted) {
+              _showSnackBar(
+                context,
+                'Error recording payment: $e',
+                isError: true,
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+
+  void _showSnackBar(
+    BuildContext context,
+    String message, {
+    bool isError = false,
+  }) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppColors.accent : const Color(0xFF2D9E6B),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
       ),
     );
   }

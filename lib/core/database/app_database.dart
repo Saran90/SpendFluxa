@@ -19,7 +19,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _dbName = 'spendflux.db';
-  static const _dbVersion = 7;
+  static const _dbVersion = 9;
 
   Database? _db;
 
@@ -141,6 +141,181 @@ class AppDatabase {
         // Column already exists — safe to ignore.
       }
     }
+    if (oldVersion < 8) {
+      // Add credit card tracking fields to transactions table in version 8
+      await _migrateToCreditCardTracking(db);
+    }
+    if (oldVersion < 9) {
+      // Add custom_category_limits column to budgets table in version 9
+      try {
+        await db.execute(
+          'ALTER TABLE budgets ADD COLUMN custom_category_limits TEXT NOT NULL DEFAULT \'{}\'',
+        );
+        debugPrint(
+          '[AppDatabase] Added custom_category_limits column to budgets',
+        );
+      } catch (e) {
+        debugPrint(
+          '[AppDatabase] custom_category_limits column may already exist: $e',
+        );
+      }
+    }
+  }
+
+  Future<void> _migrateToCreditCardTracking(Database db) async {
+    debugPrint(
+      '[AppDatabase] Starting migration to version 8 (Credit Card Tracking)',
+    );
+
+    try {
+      // Add credit card tracking columns to transactions table
+      await db.execute(
+        'ALTER TABLE transactions ADD COLUMN credit_card_account_id TEXT',
+      );
+      debugPrint('[AppDatabase] Added credit_card_account_id column');
+    } catch (e) {
+      debugPrint(
+        '[AppDatabase] credit_card_account_id column already exists: $e',
+      );
+    }
+
+    try {
+      await db.execute(
+        'ALTER TABLE transactions ADD COLUMN transaction_state TEXT NOT NULL DEFAULT \'pending\'',
+      );
+      debugPrint('[AppDatabase] Added transaction_state column');
+    } catch (e) {
+      debugPrint('[AppDatabase] transaction_state column already exists: $e');
+    }
+
+    try {
+      await db.execute(
+        'ALTER TABLE transactions ADD COLUMN credit_card_bill_id TEXT',
+      );
+      debugPrint('[AppDatabase] Added credit_card_bill_id column');
+    } catch (e) {
+      debugPrint('[AppDatabase] credit_card_bill_id column already exists: $e');
+    }
+
+    try {
+      await db.execute(
+        'ALTER TABLE transactions ADD COLUMN state_changed_at TEXT',
+      );
+      debugPrint('[AppDatabase] Added state_changed_at column');
+    } catch (e) {
+      debugPrint('[AppDatabase] state_changed_at column already exists: $e');
+    }
+
+    // Create credit card bills table
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS credit_card_bills (
+          id                        TEXT PRIMARY KEY,
+          credit_card_account_id    TEXT NOT NULL,
+          bill_date                 TEXT NOT NULL,
+          due_date                  TEXT NOT NULL,
+          tracked_amount            REAL NOT NULL,
+          actual_amount             REAL NOT NULL,
+          difference                REAL,
+          difference_note           TEXT,
+          status                    TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','partial','paid')),
+          created_at                TEXT NOT NULL,
+          updated_at                TEXT NOT NULL,
+          FOREIGN KEY (credit_card_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        )
+      ''');
+      debugPrint('[AppDatabase] Created credit_card_bills table');
+    } catch (e) {
+      debugPrint('[AppDatabase] credit_card_bills table already exists: $e');
+    }
+
+    // Create bill payments table
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS bill_payments (
+          id                        TEXT PRIMARY KEY,
+          bill_id                   TEXT NOT NULL,
+          amount                    REAL NOT NULL,
+          payment_date              TEXT NOT NULL,
+          note                      TEXT,
+          created_at                TEXT NOT NULL,
+          FOREIGN KEY (bill_id) REFERENCES credit_card_bills(id) ON DELETE CASCADE
+        )
+      ''');
+      debugPrint('[AppDatabase] Created bill_payments table');
+    } catch (e) {
+      debugPrint('[AppDatabase] bill_payments table already exists: $e');
+    }
+
+    // Create bill transactions junction table
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS bill_transactions (
+          bill_id                   TEXT NOT NULL,
+          transaction_id            TEXT NOT NULL,
+          PRIMARY KEY (bill_id, transaction_id),
+          FOREIGN KEY (bill_id) REFERENCES credit_card_bills(id) ON DELETE CASCADE,
+          FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+        )
+      ''');
+      debugPrint('[AppDatabase] Created bill_transactions table');
+    } catch (e) {
+      debugPrint('[AppDatabase] bill_transactions table already exists: $e');
+    }
+
+    // Add credit card config columns to accounts table
+    try {
+      await db.execute(
+        'ALTER TABLE accounts ADD COLUMN billing_cycle_day INTEGER',
+      );
+      debugPrint('[AppDatabase] Added billing_cycle_day column to accounts');
+    } catch (e) {
+      debugPrint('[AppDatabase] billing_cycle_day column already exists: $e');
+    }
+
+    try {
+      await db.execute(
+        'ALTER TABLE accounts ADD COLUMN budget_counting_method TEXT DEFAULT \'committed\'',
+      );
+      debugPrint(
+        '[AppDatabase] Added budget_counting_method column to accounts',
+      );
+    } catch (e) {
+      debugPrint(
+        '[AppDatabase] budget_counting_method column already exists: $e',
+      );
+    }
+
+    try {
+      await db.execute('ALTER TABLE accounts ADD COLUMN issuer_name TEXT');
+      debugPrint('[AppDatabase] Added issuer_name column to accounts');
+    } catch (e) {
+      debugPrint('[AppDatabase] issuer_name column already exists: $e');
+    }
+
+    try {
+      await db.execute(
+        'ALTER TABLE accounts ADD COLUMN statement_start_date TEXT',
+      );
+      debugPrint('[AppDatabase] Added statement_start_date column to accounts');
+    } catch (e) {
+      debugPrint(
+        '[AppDatabase] statement_start_date column already exists: $e',
+      );
+    }
+
+    try {
+      await db.execute(
+        'ALTER TABLE accounts ADD COLUMN reminder_days_before INTEGER DEFAULT 3',
+      );
+      debugPrint('[AppDatabase] Added reminder_days_before column to accounts');
+    } catch (e) {
+      debugPrint(
+        '[AppDatabase] reminder_days_before column already exists: $e',
+      );
+    }
+
+    debugPrint('[AppDatabase] Migration to version 8 completed successfully');
   }
 
   Future<void> _createTables(Database db) async {
@@ -172,15 +347,20 @@ class AppDatabase {
     // Accounts (bank, wallet, cash, credit card, savings)
     await db.execute('''
       CREATE TABLE accounts (
-        id               TEXT PRIMARY KEY,
-        name             TEXT NOT NULL,
-        type             TEXT NOT NULL,
-        balance          REAL NOT NULL DEFAULT 0,
-        credit_limit     REAL,
-        bill_date        INTEGER,
-        last_four_digits TEXT,
-        color            INTEGER NOT NULL,
-        is_default       INTEGER NOT NULL DEFAULT 0
+        id                      TEXT PRIMARY KEY,
+        name                    TEXT NOT NULL,
+        type                    TEXT NOT NULL,
+        balance                 REAL NOT NULL DEFAULT 0,
+        credit_limit            REAL,
+        bill_date               INTEGER,
+        last_four_digits        TEXT,
+        color                   INTEGER NOT NULL,
+        is_default              INTEGER NOT NULL DEFAULT 0,
+        billing_cycle_day       INTEGER,
+        budget_counting_method  TEXT DEFAULT 'committed',
+        issuer_name             TEXT,
+        statement_start_date    TEXT,
+        reminder_days_before    INTEGER DEFAULT 3
       )
     ''');
 
@@ -236,6 +416,10 @@ class AppDatabase {
         sms_message_id        TEXT,
         bank_name             TEXT,
         custom_category_id    TEXT,
+        credit_card_account_id TEXT,
+        transaction_state     TEXT NOT NULL DEFAULT 'pending',
+        credit_card_bill_id   TEXT,
+        state_changed_at      TEXT,
         FOREIGN KEY (account_id)    REFERENCES accounts(id) ON DELETE SET NULL,
         FOREIGN KEY (to_account_id) REFERENCES accounts(id) ON DELETE SET NULL
       )
@@ -244,11 +428,12 @@ class AppDatabase {
     // Monthly budgets
     await db.execute('''
       CREATE TABLE budgets (
-        id               TEXT PRIMARY KEY,
-        year             INTEGER NOT NULL,
-        month            INTEGER NOT NULL,
-        overall_limit    REAL,
-        category_limits  TEXT NOT NULL DEFAULT '{}',
+        id                      TEXT PRIMARY KEY,
+        year                    INTEGER NOT NULL,
+        month                   INTEGER NOT NULL,
+        overall_limit           REAL,
+        category_limits         TEXT NOT NULL DEFAULT '{}',
+        custom_category_limits  TEXT NOT NULL DEFAULT '{}',
         UNIQUE(year, month)
       )
     ''');
@@ -276,6 +461,48 @@ class AppDatabase {
         confirmed_at              TEXT,
         FOREIGN KEY (recurring_transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
         UNIQUE(recurring_transaction_id, due_date)
+      )
+    ''');
+
+    // Credit card bills
+    await db.execute('''
+      CREATE TABLE credit_card_bills (
+        id                        TEXT PRIMARY KEY,
+        credit_card_account_id    TEXT NOT NULL,
+        bill_date                 TEXT NOT NULL,
+        due_date                  TEXT NOT NULL,
+        tracked_amount            REAL NOT NULL,
+        actual_amount             REAL NOT NULL,
+        difference                REAL,
+        difference_note           TEXT,
+        status                    TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','partial','paid')),
+        created_at                TEXT NOT NULL,
+        updated_at                TEXT NOT NULL,
+        FOREIGN KEY (credit_card_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      )
+    ''');
+
+    // Bill payments
+    await db.execute('''
+      CREATE TABLE bill_payments (
+        id                        TEXT PRIMARY KEY,
+        bill_id                   TEXT NOT NULL,
+        amount                    REAL NOT NULL,
+        payment_date              TEXT NOT NULL,
+        note                      TEXT,
+        created_at                TEXT NOT NULL,
+        FOREIGN KEY (bill_id) REFERENCES credit_card_bills(id) ON DELETE CASCADE
+      )
+    ''');
+
+    // Bill transactions (junction table)
+    await db.execute('''
+      CREATE TABLE bill_transactions (
+        bill_id                   TEXT NOT NULL,
+        transaction_id            TEXT NOT NULL,
+        PRIMARY KEY (bill_id, transaction_id),
+        FOREIGN KEY (bill_id) REFERENCES credit_card_bills(id) ON DELETE CASCADE,
+        FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
       )
     ''');
   }

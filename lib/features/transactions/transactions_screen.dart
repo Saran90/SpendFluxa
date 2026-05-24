@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import '../../core/models/account.dart';
 import '../../core/models/transaction.dart';
 import '../../core/services/account_service.dart';
 import '../../core/services/category_service.dart';
@@ -148,13 +149,18 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             ..sort((a, b) => a.label.compareTo(b.label));
           final q = _searchQuery.trim().toLowerCase();
           final txs = allTxs.where((t) {
-            if (_selectedCategory != null && t.category != _selectedCategory) return false;
+            if (_selectedCategory != null && t.category != _selectedCategory) {
+              return false;
+            }
             if (q.isNotEmpty) {
               return t.title.toLowerCase().contains(q) ||
                   t.category.label.toLowerCase().contains(q) ||
                   (t.note?.toLowerCase().contains(q) ?? false) ||
                   t.amount.toString().contains(q) ||
-                  fmt.format(t.amount).replaceAll(RegExp(r'[^0-9.]'), '').contains(q);
+                  fmt
+                      .format(t.amount)
+                      .replaceAll(RegExp(r'[^0-9.]'), '')
+                      .contains(q);
             }
             return true;
           }).toList();
@@ -168,7 +174,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               _buildMonthSelector(),
               if (_searchVisible) _buildSearchBar(),
               if (!_searchVisible) _buildSummaryCard(income, expenses, fmt),
-              if (!_searchVisible && categories.isNotEmpty) _buildCategoryFilter(categories),
+              if (!_searchVisible && categories.isNotEmpty)
+                _buildCategoryFilter(categories),
               Expanded(
                 child: txs.isEmpty
                     ? _buildEmptyState()
@@ -215,6 +222,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                   tx: grouped[dateKey]![i],
                                   fmt: fmt,
                                   categoryService: widget.categoryService,
+                                  accountService: widget.accountService,
                                   onTap: () => _openDetail(
                                     context,
                                     grouped[dateKey]![i],
@@ -292,7 +300,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 icon: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
                   child: Icon(
-                    _searchVisible ? Icons.search_off_rounded : Icons.search_rounded,
+                    _searchVisible
+                        ? Icons.search_off_rounded
+                        : Icons.search_rounded,
                     key: ValueKey(_searchVisible),
                     color: Colors.white,
                     size: 24,
@@ -327,7 +337,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         child: Row(
           children: [
             const SizedBox(width: 14),
-            const Icon(Icons.search_rounded, size: 20, color: AppColors.textSecondary),
+            const Icon(
+              Icons.search_rounded,
+              size: 20,
+              color: AppColors.textSecondary,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: TextField(
@@ -339,7 +353,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
                 decoration: const InputDecoration(
                   hintText: 'Search transactions...',
-                  hintStyle: TextStyle(fontSize: 15, color: AppColors.textLight),
+                  hintStyle: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.textLight,
+                  ),
                   border: InputBorder.none,
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
@@ -349,7 +366,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             ),
             if (_searchQuery.isNotEmpty)
               IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textSecondary),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: AppColors.textSecondary,
+                ),
                 onPressed: () => setState(() {
                   _searchQuery = '';
                   _searchController.clear();
@@ -560,9 +581,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           final cat = categories[i];
           final selected = _selectedCategory == cat;
           return GestureDetector(
-            onTap: () => setState(
-              () => _selectedCategory = selected ? null : cat,
-            ),
+            onTap: () =>
+                setState(() => _selectedCategory = selected ? null : cat),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -605,7 +625,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     } else if (_selectedCategory != null) {
       message = 'No "${_selectedCategory!.label}" transactions this month';
     } else {
-      message = 'Nothing recorded for ${DateFormat('MMMM yyyy').format(_selectedMonth)}';
+      message =
+          'Nothing recorded for ${DateFormat('MMMM yyyy').format(_selectedMonth)}';
     }
 
     return Center(
@@ -613,7 +634,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            _searchQuery.trim().isNotEmpty ? Icons.search_off_rounded : Icons.receipt_long_rounded,
+            _searchQuery.trim().isNotEmpty
+                ? Icons.search_off_rounded
+                : Icons.receipt_long_rounded,
             size: 56,
             color: AppColors.textLight,
           ),
@@ -644,12 +667,14 @@ class _TransactionTile extends StatelessWidget {
   final Transaction tx;
   final NumberFormat fmt;
   final CategoryService categoryService;
+  final AccountService accountService;
   final VoidCallback onTap;
 
   const _TransactionTile({
     required this.tx,
     required this.fmt,
     required this.categoryService,
+    required this.accountService,
     required this.onTap,
   });
 
@@ -688,11 +713,7 @@ class _TransactionTile extends StatelessWidget {
                   color: cat.color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(
-                  cat.icon,
-                  color: cat.color,
-                  size: 22,
-                ),
+                child: Icon(cat.icon, color: cat.color, size: 22),
               ),
               const SizedBox(width: 14),
 
@@ -733,6 +754,20 @@ class _TransactionTile extends StatelessWidget {
                             ),
                           ),
                         ),
+                        // Payment mode indicator
+                        if (tx.accountId != null) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            width: 3,
+                            height: 3,
+                            decoration: const BoxDecoration(
+                              color: AppColors.textLight,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(child: _buildPaymentModeChip(tx.accountId!)),
+                        ],
                         if (tx.note != null && tx.note!.isNotEmpty) ...[
                           const SizedBox(width: 6),
                           const Icon(
@@ -774,6 +809,51 @@ class _TransactionTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentModeChip(String accountId) {
+    final account = accountService.all.firstWhere(
+      (a) => a.id == accountId,
+      orElse: () => Account(
+        id: '',
+        name: 'Cash',
+        type: AccountType.cash,
+        balance: 0,
+        color: const Color(0xFF2D9E6B),
+        isDefault: false,
+      ),
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: account.type.color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: account.type.color.withValues(alpha: 0.3),
+          width: 0.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(account.type.icon, size: 9, color: account.type.color),
+          const SizedBox(width: 2),
+          Flexible(
+            child: Text(
+              account.name,
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: account.type.color,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }

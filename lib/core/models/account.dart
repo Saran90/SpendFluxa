@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'credit_card_config.dart';
 
 enum AccountType { bank, creditCard, wallet, cash, savings }
 
@@ -75,6 +76,7 @@ class Account {
   final String? lastFourDigits;
   final Color color;
   final bool isDefault;
+  final CreditCardConfig? creditCardConfig; // CC-specific configuration
 
   const Account({
     required this.id,
@@ -86,9 +88,11 @@ class Account {
     this.billDate,
     this.lastFourDigits,
     this.isDefault = false,
+    this.creditCardConfig,
   });
 
   /// Available credit = limit - outstanding (credit cards only)
+  /// If balance is negative (credit), available credit is limit + credit
   double? get availableCredit => creditLimit != null
       ? (creditLimit! - balance).clamp(0.0, creditLimit!)
       : null;
@@ -107,6 +111,7 @@ class Account {
     String? lastFourDigits,
     Color? color,
     bool? isDefault,
+    CreditCardConfig? creditCardConfig,
   }) {
     return Account(
       id: id,
@@ -118,6 +123,7 @@ class Account {
       billDate: billDate ?? this.billDate,
       lastFourDigits: lastFourDigits ?? this.lastFourDigits,
       isDefault: isDefault ?? this.isDefault,
+      creditCardConfig: creditCardConfig ?? this.creditCardConfig,
     );
   }
 
@@ -131,6 +137,7 @@ class Account {
     'billDate': billDate,
     'lastFourDigits': lastFourDigits,
     'isDefault': isDefault,
+    'creditCardConfig': creditCardConfig?.toMap(),
   };
 
   factory Account.fromMap(Map<String, dynamic> map) => Account(
@@ -148,5 +155,10 @@ class Account {
     billDate: map['billDate'] as int?,
     lastFourDigits: map['lastFourDigits'] as String?,
     isDefault: map['isDefault'] as bool? ?? false,
+    creditCardConfig: map['creditCardConfig'] != null
+        ? CreditCardConfig.fromMap(
+            map['creditCardConfig'] as Map<String, dynamic>,
+          )
+        : null,
   );
 }

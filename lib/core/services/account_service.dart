@@ -100,21 +100,38 @@ class AccountService extends ChangeNotifier {
   /// Credit cards:
   ///   +delta → outstanding increases (expense charged to card)
   ///   -delta → outstanding decreases (payment / credit received)
+  ///   Negative balance = credit balance (overpayment)
   ///
   /// Other account types:
   ///   +delta → balance increases (income received)
   ///   -delta → balance decreases (expense paid out)
-  ///
-  /// The result is clamped to zero from below for credit cards.
   Future<void> adjustBalance(String accountId, double delta) async {
     final idx = _accounts.indexWhere((a) => a.id == accountId);
     if (idx == -1) return;
     final account = _accounts[idx];
 
     double newBalance = account.balance + delta;
-    if (account.type == AccountType.creditCard) {
-      newBalance = newBalance.clamp(0.0, double.infinity);
-    }
+
+    await AppDatabase.instance.update(
+      'accounts',
+      {'balance': newBalance},
+      where: 'id = ?',
+      whereArgs: [accountId],
+    );
+    await _load();
+  }
+
+  /// Sets the balance/outstanding of an account to a specific value.
+  ///
+  /// Credit cards:
+  ///   Positive balance = outstanding amount
+  ///   Negative balance = credit balance (overpayment)
+  ///
+  /// Other account types:
+  ///   Balance represents current account value
+  Future<void> setBalance(String accountId, double newBalance) async {
+    final idx = _accounts.indexWhere((a) => a.id == accountId);
+    if (idx == -1) return;
 
     await AppDatabase.instance.update(
       'accounts',
@@ -145,7 +162,6 @@ class AccountService extends ChangeNotifier {
         outstanding -= (tx.amount as num).toDouble();
       }
     }
-    outstanding = outstanding.clamp(0.0, double.infinity);
 
     await AppDatabase.instance.update(
       'accounts',

@@ -24,6 +24,12 @@ class BudgetService extends ChangeNotifier {
   double? categoryLimitFor(int year, int month, TransactionCategory category) =>
       budgetFor(year, month).categoryLimits[category];
 
+  double? customCategoryLimitFor(
+    int year,
+    int month,
+    String customCategoryId,
+  ) => budgetFor(year, month).customCategoryLimits[customCategoryId];
+
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   Future<void> setOverallLimit(int year, int month, double? limit) async {
@@ -53,6 +59,25 @@ class BudgetService extends ChangeNotifier {
       limits[category] = limit;
     }
     final updated = existing.copyWith(categoryLimits: limits);
+    _budgets['$year-$month'] = updated;
+    notifyListeners();
+    await _upsert(updated);
+  }
+
+  Future<void> setCustomCategoryLimit(
+    int year,
+    int month,
+    String customCategoryId,
+    double? limit,
+  ) async {
+    final existing = budgetFor(year, month);
+    final limits = Map<String, double>.from(existing.customCategoryLimits);
+    if (limit == null || limit <= 0) {
+      limits.remove(customCategoryId);
+    } else {
+      limits[customCategoryId] = limit;
+    }
+    final updated = existing.copyWith(customCategoryLimits: limits);
     _budgets['$year-$month'] = updated;
     notifyListeners();
     await _upsert(updated);
@@ -104,6 +129,7 @@ class BudgetService extends ChangeNotifier {
     'category_limits': jsonEncode(
       b.categoryLimits.map((k, v) => MapEntry(k.name, v)),
     ),
+    'custom_category_limits': jsonEncode(b.customCategoryLimits),
   };
 
   MonthlyBudget _fromRow(Map<String, dynamic> row) {
@@ -117,6 +143,16 @@ class BudgetService extends ChangeNotifier {
       );
       limits[cat] = (entry.value as num).toDouble();
     }
+
+    // Load custom category limits (column may not exist in older DB rows)
+    final rawCustom = row['custom_category_limits'] != null
+        ? jsonDecode(row['custom_category_limits'] as String)
+              as Map<String, dynamic>
+        : <String, dynamic>{};
+    final customLimits = rawCustom.map(
+      (k, v) => MapEntry(k, (v as num).toDouble()),
+    );
+
     return MonthlyBudget(
       year: row['year'] as int,
       month: row['month'] as int,
@@ -124,6 +160,7 @@ class BudgetService extends ChangeNotifier {
           ? (row['overall_limit'] as num).toDouble()
           : null,
       categoryLimits: limits,
+      customCategoryLimits: customLimits,
     );
   }
 }

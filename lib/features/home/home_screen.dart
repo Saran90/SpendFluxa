@@ -6,8 +6,10 @@ import '../../core/models/budget.dart';
 import '../../core/models/transaction.dart';
 import '../../core/services/account_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/bill_generation_service.dart';
 import '../../core/services/budget_service.dart';
 import '../../core/services/category_service.dart';
+import '../../core/services/credit_card_bill_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
@@ -32,6 +34,8 @@ class HomeScreen extends StatefulWidget {
   final AccountService accountService;
   final CategoryService categoryService;
   final TagService tagService;
+  final CreditCardBillService billService;
+  final BillGenerationService billGenerationService;
   final ReminderService? reminderService;
   final RecurringConfirmationService recurringConfirmationService;
   final ScrollController? scrollController;
@@ -45,6 +49,8 @@ class HomeScreen extends StatefulWidget {
     required this.accountService,
     required this.categoryService,
     required this.tagService,
+    required this.billService,
+    required this.billGenerationService,
     this.reminderService,
     required this.recurringConfirmationService,
     this.scrollController,
@@ -795,6 +801,20 @@ class _HomeScreenState extends State<HomeScreen>
                             color: AppColors.textSecondary,
                           ),
                         ),
+                        // Payment mode indicator
+                        if (tx.accountId != null) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            width: 3,
+                            height: 3,
+                            decoration: const BoxDecoration(
+                              color: AppColors.textLight,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(child: _buildPaymentModeChip(tx.accountId!)),
+                        ],
                         if (!tx.isMonthly) ...[
                           const SizedBox(width: 6),
                           Container(
@@ -1281,6 +1301,8 @@ class _HomeScreenState extends State<HomeScreen>
           accountService: widget.accountService,
           transactionService: widget.transactionService,
           currencyService: widget.currencyService,
+          billService: widget.billService,
+          billGenerationService: widget.billGenerationService,
         ),
       ),
     );
@@ -1542,6 +1564,53 @@ class _HomeScreenState extends State<HomeScreen>
                 overflow: TextOverflow.ellipsis,
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Payment mode chip ─────────────────────────────────────────────────────
+
+  Widget _buildPaymentModeChip(String accountId) {
+    final account = widget.accountService.all.firstWhere(
+      (a) => a.id == accountId,
+      orElse: () => Account(
+        id: '',
+        name: 'Cash',
+        type: AccountType.cash,
+        balance: 0,
+        color: const Color(0xFF2D9E6B),
+        isDefault: false,
+      ),
+    );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: account.type.color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: account.type.color.withValues(alpha: 0.3),
+          width: 0.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(account.type.icon, size: 9, color: account.type.color),
+          const SizedBox(width: 2),
+          Flexible(
+            child: Text(
+              account.name,
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: account.type.color,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),

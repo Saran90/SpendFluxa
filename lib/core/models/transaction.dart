@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'custom_category.dart';
+import 'credit_card_bill.dart';
 
 enum TransactionType { income, expense, transfer }
 
@@ -239,6 +240,13 @@ class Transaction {
   final String? smsMessageId; // Original SMS message ID for deduplication
   final String? bankName; // Bank that sent the SMS
 
+  // Credit card tracking fields
+  final String?
+  creditCardAccountId; // Links to CC account if this is a CC transaction
+  final TransactionState state; // pending, billed, paid
+  final String? creditCardBillId; // Links to bill (if billed)
+  final DateTime? stateChangedAt; // Audit trail for state changes
+
   const Transaction({
     required this.id,
     required this.title,
@@ -265,11 +273,21 @@ class Transaction {
     this.source,
     this.smsMessageId,
     this.bankName,
+    this.creditCardAccountId,
+    this.state = TransactionState.pending,
+    this.creditCardBillId,
+    this.stateChangedAt,
   });
 
   bool get isExpense => type == TransactionType.expense;
   bool get isIncome => type == TransactionType.income;
   bool get isTransfer => type == TransactionType.transfer;
+
+  // Credit card transaction getters
+  bool get isCreditCardTransaction => creditCardAccountId != null;
+  bool get isPending => state == TransactionState.pending;
+  bool get isBilled => state == TransactionState.billed;
+  bool get isPaid => state == TransactionState.paid;
 
   /// Returns the effective icon/color/label for display.
   /// If [customCategoryId] is set and [lookupCustom] finds it, those values
@@ -319,6 +337,10 @@ class Transaction {
     String? source,
     String? smsMessageId,
     String? bankName,
+    String? creditCardAccountId,
+    TransactionState? state,
+    String? creditCardBillId,
+    DateTime? stateChangedAt,
   }) {
     return Transaction(
       id: id,
@@ -346,6 +368,10 @@ class Transaction {
       source: source ?? this.source,
       smsMessageId: smsMessageId ?? this.smsMessageId,
       bankName: bankName ?? this.bankName,
+      creditCardAccountId: creditCardAccountId ?? this.creditCardAccountId,
+      state: state ?? this.state,
+      creditCardBillId: creditCardBillId ?? this.creditCardBillId,
+      stateChangedAt: stateChangedAt ?? this.stateChangedAt,
     );
   }
 
@@ -374,6 +400,10 @@ class Transaction {
     'source': source,
     'smsMessageId': smsMessageId,
     'bankName': bankName,
+    'creditCardAccountId': creditCardAccountId,
+    'state': state.name,
+    'creditCardBillId': creditCardBillId,
+    'stateChangedAt': stateChangedAt?.toIso8601String(),
   };
 
   factory Transaction.fromMap(Map<String, dynamic> map) => Transaction(
@@ -415,5 +445,14 @@ class Transaction {
     source: map['source'] as String?,
     smsMessageId: map['smsMessageId'] as String?,
     bankName: map['bankName'] as String?,
+    creditCardAccountId: map['creditCardAccountId'] as String?,
+    state: TransactionState.values.firstWhere(
+      (s) => s.name == map['state'],
+      orElse: () => TransactionState.pending,
+    ),
+    creditCardBillId: map['creditCardBillId'] as String?,
+    stateChangedAt: map['stateChangedAt'] != null
+        ? DateTime.parse(map['stateChangedAt'] as String)
+        : null,
   );
 }

@@ -4,8 +4,10 @@ import '../../core/services/account_service.dart';
 import '../../core/services/auto_backup_service.dart';
 import '../../core/services/backup_service.dart';
 import '../../core/services/biometric_service.dart';
+import '../../core/services/bill_generation_service.dart';
 import '../../core/services/budget_service.dart';
 import '../../core/services/category_service.dart';
+import '../../core/services/credit_card_bill_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
@@ -33,6 +35,8 @@ class MainShell extends StatefulWidget {
   final BackupService backupService;
   final AutoBackupService autoBackupService;
   final BiometricService biometricService;
+  final CreditCardBillService billService;
+  final BillGenerationService billGenerationService;
   final ReminderService? reminderService;
   final RecurringConfirmationService recurringConfirmationService;
 
@@ -48,6 +52,8 @@ class MainShell extends StatefulWidget {
     required this.backupService,
     required this.autoBackupService,
     required this.biometricService,
+    required this.billService,
+    required this.billGenerationService,
     this.reminderService,
     required this.recurringConfirmationService,
   });
@@ -97,6 +103,9 @@ class _MainShellState extends State<MainShell>
     // Check for forced update
     _checkForceUpdate();
 
+    // Check and generate bills if due
+    _checkAndGenerateBills();
+
     // Run auto-backup if it's due (silently, in background)
     _runAutoBackupIfDue();
   }
@@ -111,6 +120,18 @@ class _MainShellState extends State<MainShell>
         barrierDismissible: false,
         builder: (_) => ForceUpdateDialog(storeUrl: storeUrl),
       );
+    }
+  }
+
+  Future<void> _checkAndGenerateBills() async {
+    // Small delay to let the app finish rendering
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+
+    try {
+      await widget.billGenerationService.checkAndGenerateBills();
+    } catch (e) {
+      debugPrint('[MainShell] Error generating bills: $e');
     }
   }
 
@@ -229,6 +250,8 @@ class _MainShellState extends State<MainShell>
               accountService: widget.accountService,
               categoryService: widget.categoryService,
               tagService: widget.tagService,
+              billService: widget.billService,
+              billGenerationService: widget.billGenerationService,
               reminderService: widget.reminderService,
               recurringConfirmationService: widget.recurringConfirmationService,
               scrollController: _scrollControllers[0],
@@ -251,6 +274,7 @@ class _MainShellState extends State<MainShell>
               budgetService: widget.budgetService,
               transactionService: widget.transactionService,
               currencyService: widget.currencyService,
+              categoryService: widget.categoryService,
               scrollController: _scrollControllers[2],
             ),
             2,

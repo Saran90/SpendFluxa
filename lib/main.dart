@@ -6,8 +6,10 @@ import 'core/services/auth_service.dart';
 import 'core/services/auto_backup_service.dart';
 import 'core/services/backup_service.dart';
 import 'core/services/biometric_service.dart';
+import 'core/services/bill_generation_service.dart';
 import 'core/services/budget_service.dart';
 import 'core/services/category_service.dart';
+import 'core/services/credit_card_bill_service.dart';
 import 'core/services/currency_service.dart';
 import 'core/services/tag_service.dart';
 import 'core/services/transaction_service.dart';
@@ -54,11 +56,25 @@ class _SpendFluxAppState extends State<SpendFluxApp> {
   final BackupService _backupService = BackupService();
   final AutoBackupService _autoBackupService = AutoBackupService();
   final BiometricService _biometricService = BiometricService();
+  final CreditCardBillService _billService = CreditCardBillService();
+  late final BillGenerationService _billGenerationService =
+      BillGenerationService(
+        accountService: _accountService,
+        transactionService: _transactionService,
+        billService: _billService,
+      );
   late final ReminderService _reminderService = ReminderService(
     notificationService: NotificationService(),
   );
   final RecurringConfirmationService _recurringConfirmationService =
       RecurringConfirmationService();
+
+  @override
+  void initState() {
+    super.initState();
+    // Check and generate bills on app launch
+    _billGenerationService.checkAndGenerateBills();
+  }
 
   @override
   void dispose() {
@@ -72,6 +88,8 @@ class _SpendFluxAppState extends State<SpendFluxApp> {
     _backupService.dispose();
     _autoBackupService.dispose();
     _biometricService.dispose();
+    _billService.dispose();
+    _billGenerationService.dispose();
     _reminderService.dispose();
     _recurringConfirmationService.dispose();
     super.dispose();
@@ -118,6 +136,8 @@ class _SpendFluxAppState extends State<SpendFluxApp> {
           backupService: _backupService,
           autoBackupService: _autoBackupService,
           biometricService: _biometricService,
+          billService: _billService,
+          billGenerationService: _billGenerationService,
           reminderService: _reminderService,
           recurringConfirmationService: _recurringConfirmationService,
         ),
