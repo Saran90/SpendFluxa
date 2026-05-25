@@ -550,6 +550,8 @@ class _HomeScreenState extends State<HomeScreen>
           transactionService: widget.transactionService,
           currencyService: widget.currencyService,
           categoryService: widget.categoryService,
+          accountService: widget.accountService,
+          tagService: widget.tagService,
         ),
       ),
     );

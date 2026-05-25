@@ -154,8 +154,12 @@ class BillGenerationService extends ChangeNotifier {
       // Save to database using bill service
       await billService.add(bill);
 
-      // Create adjustment transaction if there's a difference
-      if (difference != 0) {
+      // Create adjustment transaction ONLY when bill > outstanding
+      // (i.e. the bank added fees, interest, or other charges).
+      // When bill < outstanding, the difference is simply transactions recorded
+      // after the billing cycle closed — they belong to the next cycle, so no
+      // adjustment is needed.
+      if (difference > 0) {
         await _createAdjustmentTransaction(
           creditCardAccount,
           difference,
@@ -163,15 +167,11 @@ class BillGenerationService extends ChangeNotifier {
         );
       }
 
-      // Update account balance to match the bill amount
-      // For credit cards, positive balance means outstanding amount
-      await accountService.setBalance(creditCardAccount.id, actualAmount);
+      // NOTE: Outstanding balance is NOT changed here.
+      // It will be recalculated when the user records a payment.
 
       debugPrint(
         '[BillGenerationService] Generated bill for ${creditCardAccount.name}: $actualAmount',
-      );
-      debugPrint(
-        '[BillGenerationService] Updated account balance to: $actualAmount',
       );
       if (difference != 0) {
         debugPrint(
@@ -239,15 +239,11 @@ class BillGenerationService extends ChangeNotifier {
       // Save to database using bill service
       await billService.add(bill);
 
-      // Update account balance to match the bill amount
-      // For credit cards, positive balance means outstanding amount
-      await accountService.setBalance(creditCardAccount.id, actualAmount);
+      // NOTE: Outstanding balance is NOT changed here.
+      // It will be recalculated when the user records a payment.
 
       debugPrint(
         '[BillGenerationService] Generated bill for ${creditCardAccount.name}: $actualAmount',
-      );
-      debugPrint(
-        '[BillGenerationService] Updated account balance to: $actualAmount',
       );
     } catch (e) {
       debugPrint(

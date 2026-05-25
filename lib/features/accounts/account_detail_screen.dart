@@ -320,84 +320,125 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     Account creditCardAccount,
     NumberFormat fmt,
   ) {
-    // Check if bill date is set
-    if (creditCardAccount.billDate == null) {
-      return _buildGenerateBillButton(context, creditCardAccount);
-    }
-
-    // Check if a bill exists for this account
     final latestBill = widget.billService.getLatestBillForAccount(
       creditCardAccount.id,
     );
 
-    if (latestBill == null) {
-      return _buildGenerateBillButton(context, creditCardAccount);
+    // Bill exists and is unpaid/partial → show Pay Bill only
+    if (latestBill != null && latestBill.status != BillStatus.paid) {
+      return _buildPayBillButton(context, creditCardAccount, fmt);
     }
 
-    // Check if bill is fully paid
-    if (latestBill.status == BillStatus.paid) {
-      // Bill is paid, check if it's time for next bill
-      final now = DateTime.now();
-      final nextBillDate = DateTime(
-        latestBill.billDate.month == 12
-            ? latestBill.billDate.year + 1
-            : latestBill.billDate.year,
-        latestBill.billDate.month == 12 ? 1 : latestBill.billDate.month + 1,
-        creditCardAccount.billDate!,
-      );
+    // All other states → show Generate Bill button
+    // If bill is paid this cycle, show a "paid" status badge above the button
+    final isPaidThisCycle =
+        latestBill != null && latestBill.status == BillStatus.paid;
 
-      if (now.day >= nextBillDate.day &&
-          (now.month > latestBill.billDate.month ||
-              now.year > latestBill.billDate.year)) {
-        return _buildGenerateBillButton(context, creditCardAccount);
-      }
-
-      // Bill is paid and it's not time for next bill yet
-      return const SizedBox.shrink();
-    }
-
-    // Bill exists and is not fully paid, show pay bill button
-    return _buildPayBillButton(context, creditCardAccount, fmt);
+    return _buildGenerateBillButton(
+      context,
+      creditCardAccount,
+      paidThisCycle: isPaidThisCycle,
+      paidBill: isPaidThisCycle ? latestBill : null,
+      fmt: fmt,
+    );
   }
 
   Widget _buildGenerateBillButton(
     BuildContext context,
-    Account creditCardAccount,
-  ) {
-    return GestureDetector(
-      onTap: () => _generateBillManually(context, creditCardAccount),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.3),
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.add_circle_rounded,
-              color: Colors.white.withValues(alpha: 0.9),
-              size: 18,
+    Account creditCardAccount, {
+    bool paidThisCycle = false,
+    CreditCardBill? paidBill,
+    NumberFormat? fmt,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Paid status badge ──────────────────────────────────────────
+        if (paidThisCycle && paidBill != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2D9E6B).withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(10),
             ),
-            const SizedBox(width: 8),
-            Text(
-              'Generate Bill',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Colors.white.withValues(alpha: 0.95),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Color(0xFF2D9E6B),
+                  size: 15,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Bill paid for ${_monthLabel(paidBill.billDate)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF2D9E6B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+
+        // ── Generate Bill button ───────────────────────────────────────
+        GestureDetector(
+          onTap: () => _generateBillManually(context, creditCardAccount),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.3),
+                width: 1.5,
               ),
             ),
-          ],
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.add_circle_rounded,
+                  color: Colors.white.withValues(alpha: 0.9),
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Generate Bill',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white.withValues(alpha: 0.95),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
+      ],
     );
+  }
+
+  String _monthLabel(DateTime date) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${months[date.month - 1]} ${date.year}';
   }
 
   Widget _buildPayBillButton(
@@ -504,8 +545,18 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     Account creditCardAccount,
     NumberFormat fmt,
   ) {
-    // For credit cards, the account.balance represents the outstanding balance
     final outstandingBalance = creditCardAccount.balance;
+
+    // Get the latest bill amount to auto-fill
+    final latestBill = widget.billService.getLatestBillForAccount(
+      creditCardAccount.id,
+    );
+    final billAmount = latestBill?.actualAmount;
+
+    // Non-CC accounts the user can pay from
+    final payableAccounts = widget.accountService.all
+        .where((a) => a.type != AccountType.creditCard)
+        .toList();
 
     showModalBottomSheet(
       context: context,
@@ -514,14 +565,14 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
       builder: (ctx) => BillPaymentSheet(
         creditCardAccount: creditCardAccount,
         outstandingBalance: outstandingBalance,
+        billAmount: billAmount,
+        payableAccounts: payableAccounts,
         currencyService: widget.currencyService,
-        onPaymentSubmitted: (amount, note) async {
-          // Get the latest bill for this account
-          final latestBill = widget.billService.getLatestBillForAccount(
-            creditCardAccount.id,
-          );
+        onPaymentSubmitted: (amount, fromAccountId, note) async {
+          final latestBillForPayment = widget.billService
+              .getLatestBillForAccount(creditCardAccount.id);
 
-          if (latestBill == null) {
+          if (latestBillForPayment == null) {
             _showSnackBar(
               context,
               'No bills found for this account',
@@ -531,24 +582,51 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           }
 
           try {
-            // Record the payment
+            // 1. Record the bill payment in the bill service
             await widget.billService.recordPayment(
-              latestBill.id,
+              latestBillForPayment.id,
               amount,
               DateTime.now(),
               note,
             );
 
-            // Update account balance (reduce outstanding)
+            // 2. Reduce CC outstanding
             await widget.accountService.adjustBalance(
               creditCardAccount.id,
               -amount,
             );
 
+            // 3. If a source account was selected, create a Transfer transaction
+            //    so the bank balance is reduced and the payment is visible in history.
+            //    Transfer type is NOT counted as an expense — no double-counting.
+            if (fromAccountId != null) {
+              final paymentTx = Transaction(
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                title: 'CC Bill Payment – ${creditCardAccount.name}',
+                amount: amount,
+                type: TransactionType.transfer,
+                category: TransactionCategory.bills,
+                date: DateTime.now(),
+                accountId: fromAccountId,
+                toAccountId: creditCardAccount.id,
+                note: note,
+                tagIds: const [],
+                excludeFromExpense: true, // never double-count
+                isMonthly: false,
+              );
+
+              await widget.transactionService.addTransaction(paymentTx);
+
+              // Manually deduct from the source bank account
+              // (transfers are skipped in _applyTransactionDelta)
+              await widget.accountService.adjustBalance(fromAccountId, -amount);
+            }
+
             if (context.mounted) {
+              setState(() {});
               _showSnackBar(
                 context,
-                'Payment of ${fmt.format(amount)} recorded successfully',
+                'Payment of ${fmt.format(amount)} recorded',
               );
             }
           } catch (e) {

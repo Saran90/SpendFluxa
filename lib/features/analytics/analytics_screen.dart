@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/transaction.dart';
+import '../../core/services/account_service.dart';
 import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
+import 'category_transactions_screen.dart';
 
 /// Stable key for grouping: custom categories use their id, built-ins use enum name.
 class _CategoryKey {
@@ -16,8 +19,7 @@ class _CategoryKey {
   const _CategoryKey({required this.key, required this.resolved});
 
   @override
-  bool operator ==(Object other) =>
-      other is _CategoryKey && other.key == key;
+  bool operator ==(Object other) => other is _CategoryKey && other.key == key;
 
   @override
   int get hashCode => key.hashCode;
@@ -27,6 +29,8 @@ class AnalyticsScreen extends StatefulWidget {
   final TransactionService transactionService;
   final CurrencyService currencyService;
   final CategoryService categoryService;
+  final AccountService accountService;
+  final TagService tagService;
   final ScrollController? scrollController;
 
   const AnalyticsScreen({
@@ -34,6 +38,8 @@ class AnalyticsScreen extends StatefulWidget {
     required this.transactionService,
     required this.currencyService,
     required this.categoryService,
+    required this.accountService,
+    required this.tagService,
     this.scrollController,
   });
 
@@ -320,83 +326,104 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         opacity: isHighlighted ? 1.0 : 0.35,
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.04),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
+                          child: GestureDetector(
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => CategoryTransactionsScreen(
+                                  categoryKey: entry.key.key,
+                                  resolvedCategory: cat,
+                                  month: _selectedMonth,
+                                  totalAmount: entry.value,
+                                  transactionService: widget.transactionService,
+                                  currencyService: widget.currencyService,
+                                  categoryService: widget.categoryService,
+                                  accountService: widget.accountService,
+                                  tagService: widget.tagService,
                                 ),
-                              ],
+                              ),
                             ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: cat.color.withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.04),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color: cat.color.withValues(
+                                            alpha: 0.12,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          cat.icon,
+                                          color: cat.color,
+                                          size: 20,
+                                        ),
                                       ),
-                                      child: Icon(
-                                        cat.icon,
-                                        color: cat.color,
-                                        size: 20,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          cat.label,
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        cat.label,
+                                      Text(
+                                        fmt.format(entry.value),
                                         style: const TextStyle(
                                           fontSize: 14,
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.w700,
                                           color: AppColors.textPrimary,
                                         ),
                                       ),
-                                    ),
-                                    Text(
-                                      fmt.format(entry.value),
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    SizedBox(
-                                      width: 40,
-                                      child: Text(
-                                        '${(pct * 100).toStringAsFixed(0)}%',
-                                        textAlign: TextAlign.right,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: cat.color,
+                                      const SizedBox(width: 8),
+                                      SizedBox(
+                                        width: 40,
+                                        child: Text(
+                                          '${(pct * 100).toStringAsFixed(0)}%',
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: cat.color,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: LinearProgressIndicator(
-                                    value: pct,
-                                    minHeight: 6,
-                                    backgroundColor: AppColors.background,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      cat.color,
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: pct,
+                                      minHeight: 6,
+                                      backgroundColor: AppColors.background,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        cat.color,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -541,8 +568,7 @@ class _PieChartCard extends StatelessWidget {
                       if (angle < 0) angle += 2 * math.pi;
                       double cumulative = 0;
                       for (int i = 0; i < display.length; i++) {
-                        final sweep =
-                            (display[i].value / total) * 2 * math.pi;
+                        final sweep = (display[i].value / total) * 2 * math.pi;
                         if (angle <= cumulative + sweep) {
                           onSliceTap(i);
                           return;
@@ -754,16 +780,30 @@ class _PieChartPainter extends CustomPainter {
         ..style = PaintingStyle.fill;
 
       final path = Path()
-        ..moveTo(centre.dx + innerR * math.cos(startAngle),
-            centre.dy + innerR * math.sin(startAngle))
-        ..lineTo(centre.dx + outerR * math.cos(startAngle),
-            centre.dy + outerR * math.sin(startAngle))
-        ..arcTo(Rect.fromCircle(center: centre, radius: outerR),
-            startAngle, sweep, false)
-        ..lineTo(centre.dx + innerR * math.cos(startAngle + sweep),
-            centre.dy + innerR * math.sin(startAngle + sweep))
-        ..arcTo(Rect.fromCircle(center: centre, radius: innerR),
-            startAngle + sweep, -sweep, false)
+        ..moveTo(
+          centre.dx + innerR * math.cos(startAngle),
+          centre.dy + innerR * math.sin(startAngle),
+        )
+        ..lineTo(
+          centre.dx + outerR * math.cos(startAngle),
+          centre.dy + outerR * math.sin(startAngle),
+        )
+        ..arcTo(
+          Rect.fromCircle(center: centre, radius: outerR),
+          startAngle,
+          sweep,
+          false,
+        )
+        ..lineTo(
+          centre.dx + innerR * math.cos(startAngle + sweep),
+          centre.dy + innerR * math.sin(startAngle + sweep),
+        )
+        ..arcTo(
+          Rect.fromCircle(center: centre, radius: innerR),
+          startAngle + sweep,
+          -sweep,
+          false,
+        )
         ..close();
 
       canvas.drawPath(path, fillPaint);
