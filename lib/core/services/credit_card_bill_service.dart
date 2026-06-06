@@ -25,7 +25,7 @@ class CreditCardBillService extends ChangeNotifier {
     await _load();
   }
 
-  /// Ensure the credit_card_bills table exists
+  /// Ensure the credit_card_bills table exists and has correct schema
   Future<void> _ensureTableExists() async {
     try {
       final db = await AppDatabase.instance.database;
@@ -36,25 +36,41 @@ class CreditCardBillService extends ChangeNotifier {
       );
 
       if (tables.isNotEmpty) {
-        // Table exists, check if it has correct schema
+        // Table exists, verify it has correct schema
         final columns = await db.rawQuery(
           "PRAGMA table_info(credit_card_bills)",
         );
         final columnNames = columns.map((c) => c['name'] as String).toList();
 
-        // If account_id column doesn't exist, drop and recreate
+        // If account_id column doesn't exist, drop and recreate with correct schema
         if (!columnNames.contains('account_id')) {
           debugPrint(
-            '[CreditCardBillService] Wrong schema, dropping and recreating table',
+            '[CreditCardBillService] Wrong schema detected, recreating table...',
           );
           await db.execute('DROP TABLE IF EXISTS credit_card_bills');
-        } else {
-          // Table has correct schema
+          await db.execute('''
+            CREATE TABLE credit_card_bills (
+              id                    TEXT PRIMARY KEY,
+              account_id            TEXT NOT NULL,
+              bill_date             TEXT NOT NULL,
+              bill_amount           REAL NOT NULL,
+              status                TEXT NOT NULL CHECK(status IN ('unpaid','paid')),
+              paid_date             TEXT,
+              paid_from_account_id  TEXT,
+              FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+              FOREIGN KEY (paid_from_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+            )
+          ''');
+          debugPrint(
+            '[CreditCardBillService] Table recreated with correct schema',
+          );
           return;
         }
+        // Schema is correct, no action needed
+        return;
       }
 
-      // Create table (either didn't exist or we just dropped it)
+      // Table doesn't exist, create it
       debugPrint('[CreditCardBillService] Creating credit_card_bills table');
       await db.execute('''
         CREATE TABLE credit_card_bills (
@@ -145,6 +161,11 @@ class CreditCardBillService extends ChangeNotifier {
 
   /// Pay a bill
   Future<void> payBill(CreditCardBill bill, String? fromAccountId) async {
+    final creditCardAccount = accountService.all.firstWhere(
+      (a) => a.id == bill.accountId,
+    );
+    final currentOutstanding = creditCardAccount.balance;
+
     final paidBill = bill.copyWith(
       status: 'paid',
       paidDate: DateTime.now(),
@@ -158,16 +179,78 @@ class CreditCardBillService extends ChangeNotifier {
       whereArgs: [bill.id],
     );
 
-    // Reduce credit card outstanding
-    await accountService.adjustBalance(bill.accountId, -bill.billAmount);
+    // Case 1: Bill amount is LESS than outstanding
+    // We pay the bill amount, leaving the remaining as outstanding
+    if (bill.billAmount <= currentOutstanding) {
+      // Create bill payment transaction (transfer from bank to credit card)
+      final billPaymentTxn = Transaction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: 'Bill Payment - ${creditCardAccount.name}',
+        amount: bill.billAmount,
+        type: TransactionType.income,
+        category: TransactionCategory.bills,
+        date: DateTime.now(),
+        accountId: bill.accountId,
+        note: 'Credit card bill payment',
+        excludeFromExpense: true,
+        isMonthly: false,
+      );
+      await transactionService.addTransaction(billPaymentTxn);
 
-    // Reduce bank account balance if selected
-    // NOTE: We don't create a transaction record because the expenses
-    // were already recorded when the original transactions were made
-    // with the credit card. Creating a transaction here would double-count
-    // the expenses in monthly analytics.
-    if (fromAccountId != null) {
-      await accountService.adjustBalance(fromAccountId, -bill.billAmount);
+      // Reduce bank account balance if selected
+      if (fromAccountId != null) {
+        await accountService.adjustBalance(fromAccountId, -bill.billAmount);
+      }
+    } else {
+      // Case 2: Bill amount is MORE than outstanding
+      // Pay the outstanding first, then the additional amount
+
+      // Pay the outstanding amount
+      if (currentOutstanding > 0) {
+        final outstandingPaymentTxn = Transaction(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: 'Bill Payment - ${creditCardAccount.name}',
+          amount: currentOutstanding,
+          type: TransactionType.income,
+          category: TransactionCategory.bills,
+          date: DateTime.now(),
+          accountId: bill.accountId,
+          note: 'Credit card bill payment',
+          excludeFromExpense: true,
+          isMonthly: false,
+        );
+        await transactionService.addTransaction(outstandingPaymentTxn);
+
+        // Manually reduce bank balance for outstanding portion
+        if (fromAccountId != null) {
+          await accountService.adjustBalance(
+            fromAccountId,
+            -currentOutstanding,
+          );
+        }
+      }
+
+      // Additional payment beyond outstanding
+      final additionalPayment = bill.billAmount - currentOutstanding;
+      if (additionalPayment > 0) {
+        // This additional amount is NEW expense that wasn't previously recorded
+        // Record it as an expense from the bank account
+        // This will automatically reduce bank balance via _applyTransactionDelta
+        final additionalPaymentTxn = Transaction(
+          id: '${DateTime.now().millisecondsSinceEpoch}_additional',
+          title: 'Additional Payment - ${creditCardAccount.name}',
+          amount: additionalPayment,
+          type: TransactionType.expense,
+          category: TransactionCategory.bills,
+          date: DateTime.now(),
+          accountId: fromAccountId, // Expense from bank account
+          note: 'Additional payment beyond outstanding balance',
+          excludeFromExpense: false, // Include in monthly expense
+          isMonthly: true,
+        );
+        await transactionService.addTransaction(additionalPaymentTxn);
+        // No manual bank adjustment needed - transaction handles it
+      }
     }
 
     await _load();

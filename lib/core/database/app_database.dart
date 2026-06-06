@@ -22,9 +22,20 @@ class AppDatabase {
   static const _dbVersion = 8;
 
   Database? _db;
+  bool _schemaValidated = false;
 
   Future<Database> get database async {
-    _db ??= await _initDb();
+    if (_db == null) {
+      _db = await _initDb();
+      _schemaValidated = false;
+    }
+
+    // Validate critical schemas once per session
+    if (!_schemaValidated) {
+      await _ensureCriticalSchemas();
+      _schemaValidated = true;
+    }
+
     return _db!;
   }
 
@@ -70,6 +81,75 @@ class AppDatabase {
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
     );
     debugPrint('[AppDatabase] Reopened after restore: $path');
+
+    // Reset schema validation flag so it runs on next database access
+    _schemaValidated = false;
+
+    // After reopening, ensure critical tables have correct schema
+    await _ensureCriticalSchemas();
+    _schemaValidated = true;
+  }
+
+  /// Ensures critical tables have the correct schema after restore
+  Future<void> _ensureCriticalSchemas() async {
+    final db = _db;
+    if (db == null) return;
+
+    try {
+      // Check credit_card_bills table schema
+      final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='credit_card_bills'",
+      );
+
+      if (tables.isNotEmpty) {
+        final columns = await db.rawQuery(
+          "PRAGMA table_info(credit_card_bills)",
+        );
+        final columnNames = columns.map((c) => c['name'] as String).toList();
+
+        // If account_id column doesn't exist, drop and recreate with correct schema
+        if (!columnNames.contains('account_id')) {
+          debugPrint(
+            '[AppDatabase] credit_card_bills has wrong schema after restore, fixing...',
+          );
+          await db.execute('DROP TABLE IF EXISTS credit_card_bills');
+          await db.execute('''
+            CREATE TABLE credit_card_bills (
+              id                    TEXT PRIMARY KEY,
+              account_id            TEXT NOT NULL,
+              bill_date             TEXT NOT NULL,
+              bill_amount           REAL NOT NULL,
+              status                TEXT NOT NULL CHECK(status IN ('unpaid','paid')),
+              paid_date             TEXT,
+              paid_from_account_id  TEXT,
+              FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+              FOREIGN KEY (paid_from_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+            )
+          ''');
+          debugPrint(
+            '[AppDatabase] credit_card_bills table recreated with correct schema',
+          );
+        }
+      } else {
+        // Table doesn't exist, create it
+        await db.execute('''
+          CREATE TABLE credit_card_bills (
+            id                    TEXT PRIMARY KEY,
+            account_id            TEXT NOT NULL,
+            bill_date             TEXT NOT NULL,
+            bill_amount           REAL NOT NULL,
+            status                TEXT NOT NULL CHECK(status IN ('unpaid','paid')),
+            paid_date             TEXT,
+            paid_from_account_id  TEXT,
+            FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+            FOREIGN KEY (paid_from_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+          )
+        ''');
+        debugPrint('[AppDatabase] credit_card_bills table created');
+      }
+    } catch (e) {
+      debugPrint('[AppDatabase] Error ensuring critical schemas: $e');
+    }
   }
 
   // ── Schema creation ────────────────────────────────────────────────────────
@@ -700,6 +780,7 @@ class AppDatabase {
     if (db != null) {
       await db.close();
       _db = null;
+      _schemaValidated = false;
     }
   }
 }
