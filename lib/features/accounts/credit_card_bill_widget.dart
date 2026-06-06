@@ -88,7 +88,7 @@ class CreditCardBillWidget extends StatelessWidget {
                         )
                       : ElevatedButton.icon(
                           onPressed: () =>
-                              _showPayBillDialog(context, unpaidBill!),
+                              _showPayBillDialog(context, unpaidBill),
                           icon: const Icon(Icons.payment_rounded, size: 18),
                           label: const Text('Pay Bill'),
                           style: ElevatedButton.styleFrom(
