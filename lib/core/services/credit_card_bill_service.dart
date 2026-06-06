@@ -30,26 +30,45 @@ class CreditCardBillService extends ChangeNotifier {
     try {
       final db = await AppDatabase.instance.database;
 
+      // Check if table exists
       final tables = await db.rawQuery(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='credit_card_bills'",
       );
 
-      if (tables.isEmpty) {
-        debugPrint('[CreditCardBillService] Creating credit_card_bills table');
-        await db.execute('''
-          CREATE TABLE credit_card_bills (
-            id                    TEXT PRIMARY KEY,
-            account_id            TEXT NOT NULL,
-            bill_date             TEXT NOT NULL,
-            bill_amount           REAL NOT NULL,
-            status                TEXT NOT NULL CHECK(status IN ('unpaid','paid')),
-            paid_date             TEXT,
-            paid_from_account_id  TEXT,
-            FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-            FOREIGN KEY (paid_from_account_id) REFERENCES accounts(id) ON DELETE SET NULL
-          )
-        ''');
+      if (tables.isNotEmpty) {
+        // Table exists, check if it has correct schema
+        final columns = await db.rawQuery(
+          "PRAGMA table_info(credit_card_bills)",
+        );
+        final columnNames = columns.map((c) => c['name'] as String).toList();
+
+        // If account_id column doesn't exist, drop and recreate
+        if (!columnNames.contains('account_id')) {
+          debugPrint(
+            '[CreditCardBillService] Wrong schema, dropping and recreating table',
+          );
+          await db.execute('DROP TABLE IF EXISTS credit_card_bills');
+        } else {
+          // Table has correct schema
+          return;
+        }
       }
+
+      // Create table (either didn't exist or we just dropped it)
+      debugPrint('[CreditCardBillService] Creating credit_card_bills table');
+      await db.execute('''
+        CREATE TABLE credit_card_bills (
+          id                    TEXT PRIMARY KEY,
+          account_id            TEXT NOT NULL,
+          bill_date             TEXT NOT NULL,
+          bill_amount           REAL NOT NULL,
+          status                TEXT NOT NULL CHECK(status IN ('unpaid','paid')),
+          paid_date             TEXT,
+          paid_from_account_id  TEXT,
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+          FOREIGN KEY (paid_from_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+        )
+      ''');
     } catch (e) {
       debugPrint('[CreditCardBillService] Error ensuring table exists: $e');
     }
@@ -143,25 +162,14 @@ class CreditCardBillService extends ChangeNotifier {
     await accountService.adjustBalance(bill.accountId, -bill.billAmount);
 
     // Reduce bank account balance if selected
+    // NOTE: We don't create a transaction record because the expenses
+    // were already recorded when the original transactions were made
+    // with the credit card. Creating a transaction here would double-count
+    // the expenses in monthly analytics.
     if (fromAccountId != null) {
       await accountService.adjustBalance(fromAccountId, -bill.billAmount);
     }
 
-    // Create payment transaction
-    final paymentTx = Transaction(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      title: 'Credit Card Bill Payment',
-      amount: bill.billAmount,
-      type: TransactionType.expense,
-      category: TransactionCategory.bills,
-      date: DateTime.now(),
-      accountId: fromAccountId,
-      note: 'Payment for ${bill.billDate.month}/${bill.billDate.year} bill',
-      excludeFromExpense: true,
-      isMonthly: false,
-    );
-
-    await transactionService.addTransaction(paymentTx);
     await _load();
   }
 }

@@ -59,9 +59,9 @@ class CreditCardBillWidget extends StatelessWidget {
                       size: 22,
                     ),
                     const SizedBox(width: 10),
-                    Text(
-                      DateFormat('MMMM yyyy').format(DateTime.now()),
-                      style: const TextStyle(
+                    const Text(
+                      'Monthly Bill',
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textPrimary,
