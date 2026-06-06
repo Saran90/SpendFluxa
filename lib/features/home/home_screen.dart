@@ -8,6 +8,7 @@ import '../../core/services/account_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/budget_service.dart';
 import '../../core/services/category_service.dart';
+import '../../core/services/credit_card_bill_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
@@ -32,6 +33,7 @@ class HomeScreen extends StatefulWidget {
   final TagService tagService;
   final ReminderService? reminderService;
   final RecurringConfirmationService recurringConfirmationService;
+  final CreditCardBillService billService;
   final ScrollController? scrollController;
 
   const HomeScreen({
@@ -45,6 +47,7 @@ class HomeScreen extends StatefulWidget {
     required this.tagService,
     this.reminderService,
     required this.recurringConfirmationService,
+    required this.billService,
     this.scrollController,
   });
 
@@ -1244,6 +1247,7 @@ class _HomeScreenState extends State<HomeScreen>
           accountService: widget.accountService,
           transactionService: widget.transactionService,
           currencyService: widget.currencyService,
+          billService: widget.billService,
         ),
       ),
     );

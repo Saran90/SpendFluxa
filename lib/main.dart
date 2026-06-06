@@ -8,6 +8,7 @@ import 'core/services/backup_service.dart';
 import 'core/services/biometric_service.dart';
 import 'core/services/budget_service.dart';
 import 'core/services/category_service.dart';
+import 'core/services/credit_card_bill_service.dart';
 import 'core/services/currency_service.dart';
 import 'core/services/tag_service.dart';
 import 'core/services/transaction_service.dart';
@@ -59,6 +60,10 @@ class _SpendFluxAppState extends State<SpendFluxApp> {
   );
   final RecurringConfirmationService _recurringConfirmationService =
       RecurringConfirmationService();
+  late final CreditCardBillService _billService = CreditCardBillService(
+    accountService: _accountService,
+    transactionService: _transactionService,
+  );
 
   @override
   void dispose() {
@@ -74,6 +79,7 @@ class _SpendFluxAppState extends State<SpendFluxApp> {
     _biometricService.dispose();
     _reminderService.dispose();
     _recurringConfirmationService.dispose();
+    _billService.dispose();
     super.dispose();
   }
 
@@ -120,6 +126,7 @@ class _SpendFluxAppState extends State<SpendFluxApp> {
           biometricService: _biometricService,
           reminderService: _reminderService,
           recurringConfirmationService: _recurringConfirmationService,
+          billService: _billService,
         ),
       },
       initialRoute: '/',

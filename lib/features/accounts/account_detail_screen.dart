@@ -4,16 +4,19 @@ import 'package:intl/intl.dart';
 import '../../core/models/account.dart';
 import '../../core/models/transaction.dart';
 import '../../core/services/account_service.dart';
+import '../../core/services/credit_card_bill_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
 import 'add_account_sheet.dart';
+import 'credit_card_bill_widget.dart';
 
 class AccountDetailScreen extends StatelessWidget {
   final Account account;
   final AccountService accountService;
   final TransactionService transactionService;
   final CurrencyService currencyService;
+  final CreditCardBillService billService;
 
   const AccountDetailScreen({
     super.key,
@@ -21,6 +24,7 @@ class AccountDetailScreen extends StatelessWidget {
     required this.accountService,
     required this.transactionService,
     required this.currencyService,
+    required this.billService,
   });
 
   @override
@@ -59,6 +63,17 @@ class AccountDetailScreen extends StatelessWidget {
               if (current.type == AccountType.creditCard &&
                   current.creditLimit != null)
                 SliverToBoxAdapter(child: _buildCreditStats(current, fmt)),
+
+              // ── Credit card bill widget ───────────────────────────────
+              if (current.type == AccountType.creditCard)
+                SliverToBoxAdapter(
+                  child: CreditCardBillWidget(
+                    account: current,
+                    billService: billService,
+                    accountService: accountService,
+                    currencyService: currencyService,
+                  ),
+                ),
 
               // ── Transactions section label ────────────────────────────
               SliverToBoxAdapter(

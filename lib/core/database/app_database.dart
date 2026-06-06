@@ -19,7 +19,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _dbName = 'spendflux.db';
-  static const _dbVersion = 7;
+  static const _dbVersion = 8;
 
   Database? _db;
 
@@ -140,6 +140,22 @@ class AppDatabase {
       } catch (_) {
         // Column already exists — safe to ignore.
       }
+    }
+    if (oldVersion < 8) {
+      // Add credit_card_bills table in version 8
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS credit_card_bills (
+          id                    TEXT PRIMARY KEY,
+          account_id            TEXT NOT NULL,
+          bill_date             TEXT NOT NULL,
+          bill_amount           REAL NOT NULL,
+          status                TEXT NOT NULL CHECK(status IN ('unpaid','paid')),
+          paid_date             TEXT,
+          paid_from_account_id  TEXT,
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+          FOREIGN KEY (paid_from_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+        )
+      ''');
     }
   }
 
@@ -276,6 +292,21 @@ class AppDatabase {
         confirmed_at              TEXT,
         FOREIGN KEY (recurring_transaction_id) REFERENCES transactions(id) ON DELETE CASCADE,
         UNIQUE(recurring_transaction_id, due_date)
+      )
+    ''');
+
+    // Credit card bills
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS credit_card_bills (
+        id                    TEXT PRIMARY KEY,
+        account_id            TEXT NOT NULL,
+        bill_date             TEXT NOT NULL,
+        bill_amount           REAL NOT NULL,
+        status                TEXT NOT NULL CHECK(status IN ('unpaid','paid')),
+        paid_date             TEXT,
+        paid_from_account_id  TEXT,
+        FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+        FOREIGN KEY (paid_from_account_id) REFERENCES accounts(id) ON DELETE SET NULL
       )
     ''');
   }

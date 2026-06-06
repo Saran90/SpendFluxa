@@ -6,6 +6,7 @@ import '../../core/services/backup_service.dart';
 import '../../core/services/biometric_service.dart';
 import '../../core/services/budget_service.dart';
 import '../../core/services/category_service.dart';
+import '../../core/services/credit_card_bill_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
@@ -35,6 +36,7 @@ class MainShell extends StatefulWidget {
   final BiometricService biometricService;
   final ReminderService? reminderService;
   final RecurringConfirmationService recurringConfirmationService;
+  final CreditCardBillService billService;
 
   const MainShell({
     super.key,
@@ -50,6 +52,7 @@ class MainShell extends StatefulWidget {
     required this.biometricService,
     this.reminderService,
     required this.recurringConfirmationService,
+    required this.billService,
   });
 
   @override
@@ -231,6 +234,7 @@ class _MainShellState extends State<MainShell>
               tagService: widget.tagService,
               reminderService: widget.reminderService,
               recurringConfirmationService: widget.recurringConfirmationService,
+              billService: widget.billService,
               scrollController: _scrollControllers[0],
             ),
             0,
