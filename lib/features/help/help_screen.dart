@@ -29,12 +29,14 @@ class HelpScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          // ── Getting Started ────────────────────────────────────────────
           _buildSectionHeader('Getting Started'),
           _buildFeatureCard(
             context,
             icon: Icons.add_circle_rounded,
             title: 'Adding Transactions',
-            description: 'Learn how to record your income and expenses',
+            description:
+                'Record expenses, income and transfers — with a built-in calculator and support for future dates',
             color: const Color(0xFF4ECDC4),
             featureType: FeatureType.addTransaction,
           ),
@@ -44,17 +46,55 @@ class HelpScreen extends StatelessWidget {
             icon: Icons.account_balance_wallet_rounded,
             title: 'Managing Accounts',
             description:
-                'Set up and manage your bank accounts and credit cards',
+                'Set up bank accounts, wallets, cash, credit cards and savings accounts',
             color: const Color(0xFF3498DB),
             featureType: FeatureType.accounts,
           ),
+          const SizedBox(height: 12),
+          _buildFeatureCard(
+            context,
+            icon: Icons.swap_horiz_rounded,
+            title: 'Account Transfers',
+            description:
+                'Move money between accounts with purpose-driven transfer categories',
+            color: const Color(0xFF4ECDC4),
+            featureType: FeatureType.accountTransfer,
+          ),
+
           const SizedBox(height: 24),
+
+          // ── Credit Cards ───────────────────────────────────────────────
+          _buildSectionHeader('Credit Cards'),
+          _buildFeatureCard(
+            context,
+            icon: Icons.credit_card_rounded,
+            title: 'Credit Cards & EMI',
+            description:
+                'Track credit card spending and split purchases into monthly EMI instalments',
+            color: const Color(0xFF5C6BC0),
+            featureType: FeatureType.creditCard,
+          ),
+          const SizedBox(height: 12),
+          _buildFeatureCard(
+            context,
+            icon: Icons.receipt_long_rounded,
+            title: 'Credit Card Bills',
+            description:
+                'Generate monthly bills, pay them from any account and track outstanding balance',
+            color: const Color(0xFF5C6BC0),
+            featureType: FeatureType.creditCardBills,
+          ),
+
+          const SizedBox(height: 24),
+
+          // ── Advanced Features ──────────────────────────────────────────
           _buildSectionHeader('Advanced Features'),
           _buildFeatureCard(
             context,
             icon: Icons.repeat_rounded,
             title: 'Recurring Transactions',
-            description: 'Automate regular payments with user confirmation',
+            description:
+                'Automate regular payments — and convert existing transactions into recurring ones',
             color: AppColors.primary,
             featureType: FeatureType.recurring,
           ),
@@ -63,43 +103,38 @@ class HelpScreen extends StatelessWidget {
             context,
             icon: Icons.notifications_rounded,
             title: 'Reminders',
-            description: 'Set up reminders for upcoming transactions',
+            description:
+                'Get notified before upcoming recurring transactions are due',
             color: const Color(0xFF4ECDC4),
             featureType: FeatureType.reminders,
           ),
           const SizedBox(height: 12),
           _buildFeatureCard(
             context,
-            icon: Icons.credit_card_rounded,
-            title: 'Credit Cards & EMI',
-            description: 'Track credit card spending and EMI payments',
-            color: const Color(0xFF5C6BC0),
-            featureType: FeatureType.creditCard,
-          ),
-          const SizedBox(height: 12),
-          _buildFeatureCard(
-            context,
-            icon: Icons.label_rounded,
-            title: 'Tags',
-            description: 'Organize transactions with custom tags',
-            color: const Color(0xFFFF9800),
-            featureType: FeatureType.tags,
-          ),
-          const SizedBox(height: 12),
-          _buildFeatureCard(
-            context,
             icon: Icons.account_balance_wallet_rounded,
             title: 'Budgets',
-            description: 'Set spending limits and track your progress',
+            description:
+                'Set spending limits for any month — including future months — and copy budgets from previous months',
             color: const Color(0xFF2D9E6B),
             featureType: FeatureType.budgets,
           ),
           const SizedBox(height: 12),
           _buildFeatureCard(
             context,
+            icon: Icons.label_rounded,
+            title: 'Tags',
+            description:
+                'Organise transactions with custom labels for projects, trips and events',
+            color: const Color(0xFFFF9800),
+            featureType: FeatureType.tags,
+          ),
+          const SizedBox(height: 12),
+          _buildFeatureCard(
+            context,
             icon: Icons.calculate_outlined,
             title: 'Exclude from Expenses',
-            description: 'Mark transactions to exclude from expense totals',
+            description:
+                'Keep investments and transfers out of your expense totals',
             color: const Color(0xFF9B59B6),
             featureType: FeatureType.excludeExpense,
           ),
@@ -108,7 +143,8 @@ class HelpScreen extends StatelessWidget {
             context,
             icon: Icons.category_rounded,
             title: 'Custom Categories',
-            description: 'Create your own categories with custom icons and colors',
+            description:
+                'Create your own categories with custom icons and colors — for both transactions and budgets',
             color: const Color(0xFF9B59B6),
             featureType: FeatureType.customCategories,
           ),
@@ -117,20 +153,27 @@ class HelpScreen extends StatelessWidget {
             context,
             icon: Icons.bar_chart_rounded,
             title: 'Analytics',
-            description: 'Visualise spending with pie charts and monthly trends',
+            description:
+                'Visualise spending with pie charts, monthly trend bars and per-category breakdowns',
             color: const Color(0xFF3498DB),
             featureType: FeatureType.analytics,
           ),
+
           const SizedBox(height: 24),
+
+          // ── Data & Backup ──────────────────────────────────────────────
           _buildSectionHeader('Data & Backup'),
           _buildFeatureCard(
             context,
             icon: Icons.backup_rounded,
             title: 'Backup & Restore',
-            description: 'Keep your data safe with Google Drive backup',
+            description:
+                'Keep your data safe with Google Drive — name your backups, delete old ones and restore anytime',
             color: const Color(0xFF4285F4),
             featureType: FeatureType.backup,
           ),
+
+          const SizedBox(height: 32),
         ],
       ),
     );

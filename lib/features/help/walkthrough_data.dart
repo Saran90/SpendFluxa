@@ -1,9 +1,11 @@
 enum FeatureType {
   addTransaction,
   accounts,
+  accountTransfer,
   recurring,
   reminders,
   creditCard,
+  creditCardBills,
   tags,
   budgets,
   excludeExpense,
