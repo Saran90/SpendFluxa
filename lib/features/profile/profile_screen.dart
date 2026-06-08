@@ -73,7 +73,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     PackageInfo.fromPlatform().then((info) {
-      if (mounted) setState(() => _appVersion = 'v${info.version}');
+      if (mounted) {
+        setState(() {
+          // Show both the versionName (e.g. 1.1.0) and the buildNumber
+          // (e.g. 4) so the user can tell at a glance which build is
+          // actually installed.  Format: v1.1.0 (4)
+          _appVersion = 'v${info.version} (${info.buildNumber})';
+        });
+      }
     });
   }
 
