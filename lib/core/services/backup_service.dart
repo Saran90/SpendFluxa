@@ -80,12 +80,74 @@ class BackupService extends ChangeNotifier {
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
+  /// Generates the default backup file name based on the current timestamp.
+  String generateDefaultFileName() {
+    final now = DateTime.now();
+    final stamp =
+        '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}_'
+        '${now.hour.toString().padLeft(2, '0')}-'
+        '${now.minute.toString().padLeft(2, '0')}';
+    return 'spendflux_backup_$stamp.db';
+  }
+
+  /// Checks whether a backup file with [name] already exists in the Drive
+  /// folder. Returns true if a duplicate is found.
+  Future<bool> checkBackupNameExists(
+    GoogleSignInAccount account,
+    String name,
+  ) async {
+    try {
+      final scopes = [drive.DriveApi.driveFileScope];
+      GoogleSignInClientAuthorization? auth = await account.authorizationClient
+          .authorizationForScopes(scopes);
+      auth ??= await account.authorizationClient.authorizeScopes(scopes);
+
+      final driveApi = drive.DriveApi(_AuthenticatedClient(auth.accessToken));
+
+      final folderResult = await driveApi.files.list(
+        q:
+            "mimeType='application/vnd.google-apps.folder' "
+            "and name='$_driveFolder' "
+            "and trashed=false",
+        spaces: 'drive',
+        $fields: 'files(id)',
+      );
+
+      if (folderResult.files == null || folderResult.files!.isEmpty) {
+        return false; // No folder yet — no duplicates possible
+      }
+
+      final folderId = folderResult.files!.first.id!;
+      // Escape single quotes in name for Drive query
+      final escapedName = name.replaceAll("'", "\\'");
+
+      final result = await driveApi.files.list(
+        q: "'$folderId' in parents and name='$escapedName' and trashed=false",
+        spaces: 'drive',
+        $fields: 'files(id)',
+      );
+
+      return result.files != null && result.files!.isNotEmpty;
+    } catch (e) {
+      debugPrint('[BackupService] checkBackupNameExists error: $e');
+      return false;
+    }
+  }
+
   /// Backs up the SQLite database to Google Drive.
+  ///
+  /// If [customFileName] is provided it is used as-is (caller is responsible
+  /// for uniqueness checks). Otherwise a timestamped name is generated.
   ///
   /// [account] must be a signed-in [GoogleSignInAccount]. The method will
   /// request Drive authorization via [authorizationClient.authorizeScopes]
   /// (which may show UI on first use) and then upload the database file.
-  Future<BackupResult> backupToGoogleDrive(GoogleSignInAccount account) async {
+  Future<BackupResult> backupToGoogleDrive(
+    GoogleSignInAccount account, {
+    String? customFileName,
+  }) async {
     if (_isRunning) {
       return const BackupResult.failure('A backup is already in progress.');
     }
@@ -123,15 +185,8 @@ class BackupService extends ChangeNotifier {
       // 5. Find or create the "SpendFlux Backups" folder
       final folderId = await _ensureFolder(driveApi);
 
-      // 6. Build the file name: spendflux_backup_YYYY-MM-DD_HH-mm.db
-      final now = DateTime.now();
-      final stamp =
-          '${now.year.toString().padLeft(4, '0')}-'
-          '${now.month.toString().padLeft(2, '0')}-'
-          '${now.day.toString().padLeft(2, '0')}_'
-          '${now.hour.toString().padLeft(2, '0')}-'
-          '${now.minute.toString().padLeft(2, '0')}';
-      final fileName = 'spendflux_backup_$stamp.db';
+      // 6. Build the file name: use custom name if provided, else timestamp
+      final fileName = customFileName ?? generateDefaultFileName();
 
       // 7. Upload (create new file — keeps history)
       final fileBytes = await dbFile.readAsBytes();

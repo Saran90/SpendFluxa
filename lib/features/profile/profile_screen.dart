@@ -761,14 +761,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _runBackup(BuildContext context) async {
     var account = authService.googleAccount;
     if (account == null) {
-      // Silent restore didn't get a Drive account — trigger interactive sign-in.
+      // Silent sign-in didn't get a Drive account — trigger interactive sign-in.
       final ok = await authService.signInWithGoogle();
       if (!ok || !context.mounted) return;
       account = authService.googleAccount;
       if (account == null) return;
     }
 
-    final result = await backupService.backupToGoogleDrive(account);
+    // Show the naming sheet and let the user optionally name the backup.
+    final capturedAccount = account;
+    final chosenName = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _BackupNameSheet(
+        defaultFileName: backupService.generateDefaultFileName(),
+        account: capturedAccount,
+        backupService: backupService,
+      ),
+    );
+
+    // null = user dismissed the sheet → cancel
+    if (chosenName == null || !context.mounted) return;
+
+    final result = await backupService.backupToGoogleDrive(
+      capturedAccount,
+      customFileName: chosenName,
+    );
 
     if (!context.mounted) return;
 
@@ -1115,6 +1137,254 @@ class _ProfileScreenState extends State<ProfileScreen> {
     color: Color(0xFFEEF0F3),
     thickness: 6,
   );
+}
+
+// ── Backup name bottom sheet ──────────────────────────────────────────────────
+
+/// Bottom sheet shown before a manual backup. The user can optionally enter a
+/// custom name for the file. Tapping "Back up" returns the chosen (or default)
+/// file name to the caller. Dismissing the sheet returns null (cancel).
+class _BackupNameSheet extends StatefulWidget {
+  final String defaultFileName;
+  final GoogleSignInAccount account;
+  final BackupService backupService;
+
+  const _BackupNameSheet({
+    required this.defaultFileName,
+    required this.account,
+    required this.backupService,
+  });
+
+  @override
+  State<_BackupNameSheet> createState() => _BackupNameSheetState();
+}
+
+class _BackupNameSheetState extends State<_BackupNameSheet> {
+  final _controller = TextEditingController();
+  final _focusNode = FocusNode();
+  String? _error;
+  bool _checking = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  /// Ensures the name ends with .db
+  String _normalise(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return widget.defaultFileName;
+    return trimmed.endsWith('.db') ? trimmed : '$trimmed.db';
+  }
+
+  Future<void> _submit() async {
+    final finalName = _normalise(_controller.text);
+
+    setState(() {
+      _error = null;
+      _checking = true;
+    });
+
+    // Validate: check for duplicate only when the user typed a custom name
+    if (_controller.text.trim().isNotEmpty) {
+      final exists = await widget.backupService.checkBackupNameExists(
+        widget.account,
+        finalName,
+      );
+      if (!mounted) return;
+      if (exists) {
+        setState(() {
+          _checking = false;
+          _error =
+              '"$finalName" already exists on Drive. Choose a different name.';
+        });
+        return;
+      }
+    }
+
+    setState(() => _checking = false);
+    if (mounted) Navigator.of(context).pop(finalName);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.only(bottom: viewInsets.bottom),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(24, 0, 24, bottomPadding + 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.textLight,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Header row
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4285F4).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.backup_rounded,
+                      color: Color(0xFF4285F4),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Backup to Google Drive',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Optionally give this backup a custom name',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // File name field
+              TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                autofocus: true,
+                textCapitalization: TextCapitalization.none,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.textPrimary,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Backup name (optional)',
+                  hintText: widget.defaultFileName,
+                  hintStyle: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textLight,
+                  ),
+                  errorText: _error,
+                  errorMaxLines: 2,
+                  helperText: 'Leave blank to use the default timestamp name',
+                  helperStyle: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
+                  suffixText: '.db',
+                  suffixStyle: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                  filled: true,
+                  fillColor: AppColors.background,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(
+                      color: Color(0xFF4285F4),
+                      width: 2,
+                    ),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: AppColors.accent, width: 1.5),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: AppColors.accent, width: 2),
+                  ),
+                ),
+                onChanged: (_) {
+                  if (_error != null) setState(() => _error = null);
+                },
+                onSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 20),
+
+              // Back up button
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _checking ? null : _submit,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF4285F4),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _checking
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Back Up',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Restore picker bottom sheet ───────────────────────────────────────────────
