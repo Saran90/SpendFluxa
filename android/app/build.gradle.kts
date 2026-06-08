@@ -46,6 +46,13 @@ android {
         applicationId = "com.spendflux.app"
         minSdk = 26  // Required for core library desugaring with notifications
         targetSdk = flutter.targetSdkVersion
+
+        // ── App version ────────────────────────────────────────────────
+        // These values are sourced from the `version:` line at the top
+        // of pubspec.yaml (e.g. `version: 1.1.0+4`). The Flutter Gradle
+        // plugin exposes them as `flutter.versionName` and
+        // `flutter.versionCode`, so updating the pubspec is enough —
+        // no need to edit this file when bumping the version.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
