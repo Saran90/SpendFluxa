@@ -60,7 +60,7 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   int _currentIndex = 0;
 
   // Controls the hide/show animation of the nav bar
@@ -102,6 +102,27 @@ class _MainShellState extends State<MainShell>
 
     // Run auto-backup if it's due (silently, in background)
     _runAutoBackupIfDue();
+
+    // Watch app lifecycle so backup also triggers on foreground resume
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _navController.dispose();
+    for (final sc in _scrollControllers) {
+      sc.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App came back to foreground — check if a backup is now overdue
+      _runAutoBackupIfDue();
+    }
   }
 
   Future<void> _checkForceUpdate() async {
@@ -122,33 +143,41 @@ class _MainShellState extends State<MainShell>
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
 
-    // Build a temporary ProfileScreen state reference to reuse its logic
-    if (widget.autoBackupService.isDueNow()) {
-      final account = widget.authService.googleAccount;
-      if (account == null) return;
+    debugPrint('[AutoBackup] ${widget.autoBackupService.debugStatus}');
 
-      final targetId = widget.autoBackupService.targetFileId;
-      BackupResult result;
-      if (targetId != null) {
-        result = await widget.backupService.overwriteBackup(account, targetId);
-        if (result.success &&
-            result.fileId != null &&
-            result.fileId != targetId) {
-          await widget.autoBackupService.setTargetFileId(result.fileId!);
-        }
-      } else {
-        result = await widget.backupService.backupToGoogleDrive(account);
-        if (result.success && result.fileId != null) {
-          await widget.autoBackupService.setTargetFileId(result.fileId!);
-        }
-      }
+    if (!widget.autoBackupService.isDueNow()) return;
 
-      if (result.success) {
-        await widget.autoBackupService.markBackedUpToday();
-        debugPrint('[AutoBackup] Daily backup completed successfully.');
-      } else {
-        debugPrint('[AutoBackup] Daily backup failed: ${result.error}');
+    // Try silent sign-in first; if no account is cached, we can't proceed
+    // without user interaction (auto-backup must be silent).
+    var account = widget.authService.googleAccount;
+    if (account == null) {
+      debugPrint('[AutoBackup] No signed-in account — skipping.');
+      return;
+    }
+
+    debugPrint('[AutoBackup] Starting auto-backup…');
+
+    final targetId = widget.autoBackupService.targetFileId;
+    BackupResult result;
+    if (targetId != null) {
+      result = await widget.backupService.overwriteBackup(account, targetId);
+      if (result.success &&
+          result.fileId != null &&
+          result.fileId != targetId) {
+        await widget.autoBackupService.setTargetFileId(result.fileId!);
       }
+    } else {
+      result = await widget.backupService.backupToGoogleDrive(account);
+      if (result.success && result.fileId != null) {
+        await widget.autoBackupService.setTargetFileId(result.fileId!);
+      }
+    }
+
+    if (result.success) {
+      await widget.autoBackupService.markBackedUpToday();
+      debugPrint('[AutoBackup] Daily backup completed successfully.');
+    } else {
+      debugPrint('[AutoBackup] Daily backup failed: ${result.error}');
     }
   }
 
@@ -201,15 +230,6 @@ class _MainShellState extends State<MainShell>
     if (!_navVisible) return;
     _navVisible = false;
     _navController.reverse();
-  }
-
-  @override
-  void dispose() {
-    _navController.dispose();
-    for (final sc in _scrollControllers) {
-      sc.dispose();
-    }
-    super.dispose();
   }
 
   @override

@@ -103,12 +103,16 @@ class AutoBackupService extends ChangeNotifier {
     await prefs.setString(_keyLastDate, today);
   }
 
-  /// Returns true when auto-backup is enabled, the scheduled time has passed
-  /// today, and no backup has been done yet today.
-  /// Also returns true if the last backup was before today (missed backup).
+  /// Returns true when auto-backup is enabled and a backup is overdue:
+  ///   1. Today's scheduled time has already passed AND no backup done today, OR
+  ///   2. The last backup was on a previous day (missed backup — run immediately
+  ///      whenever the app is opened regardless of scheduled time).
   bool isDueNow() {
     if (!_enabled) return false;
-    if (_lastBackupDate == _todayString()) return false; // already done today
+
+    final today = _todayString();
+    if (_lastBackupDate == today) return false; // already done today
+
     final now = DateTime.now();
     final scheduledToday = DateTime(
       now.year,
@@ -117,18 +121,24 @@ class AutoBackupService extends ChangeNotifier {
       _hour,
       _minute,
     );
-    // Due if: scheduled time has passed today, OR last backup was a previous day
-    if (now.isBefore(scheduledToday) && _lastBackupDate != null) {
-      // Scheduled time hasn't passed yet today, but check if we missed yesterday
-      final lastDate = DateTime.tryParse(_lastBackupDate!);
-      if (lastDate == null) return true; // never backed up
-      final yesterday = DateTime(now.year, now.month, now.day - 1);
-      return lastDate.isBefore(yesterday) ||
-          (lastDate.year == yesterday.year &&
-              lastDate.month == yesterday.month &&
-              lastDate.day == yesterday.day);
+
+    // If we have never backed up, wait until the scheduled time passes today
+    if (_lastBackupDate == null) {
+      return !now.isBefore(scheduledToday);
     }
-    return true; // scheduled time passed and not yet done today
+
+    // If scheduled time hasn't passed yet today, only trigger if we missed
+    // a previous day (i.e. last backup was before today)
+    if (now.isBefore(scheduledToday)) {
+      final lastDate = DateTime.tryParse(_lastBackupDate!);
+      if (lastDate == null) return true;
+      // Check if last backup date is before today
+      final todayMidnight = DateTime(now.year, now.month, now.day);
+      return lastDate.isBefore(todayMidnight);
+    }
+
+    // Scheduled time has passed today and we haven't backed up yet today
+    return true;
   }
 
   /// Schedule the daily OS-level alarm via [NotificationService].
@@ -143,6 +153,17 @@ class AutoBackupService extends ChangeNotifier {
   /// Cancel the daily OS-level alarm.
   Future<void> cancelNotification() async {
     await NotificationService().cancelAutoBackup();
+  }
+
+  /// Diagnostic helper — returns a human-readable status string for debugging.
+  String get debugStatus {
+    final today = _todayString();
+    return 'AutoBackup: enabled=$_enabled, '
+        'time=$timeLabel, '
+        'targetId=$_targetFileId, '
+        'lastDate=$_lastBackupDate, '
+        'today=$today, '
+        'isDue=${isDueNow()}';
   }
 
   static String _todayString() {
