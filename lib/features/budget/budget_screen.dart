@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/transaction.dart';
+import '../../core/models/custom_category.dart';
 import '../../core/services/budget_service.dart';
+import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
@@ -28,9 +30,47 @@ const _budgetableCategories = [
   TransactionCategory.other,
 ];
 
+// Wrapper for both built-in and custom categories
+class _BudgetCategory {
+  final String id;
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool isCustom;
+
+  const _BudgetCategory({
+    required this.id,
+    required this.label,
+    required this.icon,
+    required this.color,
+    this.isCustom = false,
+  });
+
+  factory _BudgetCategory.fromBuiltIn(TransactionCategory cat) {
+    return _BudgetCategory(
+      id: cat.name,
+      label: cat.label,
+      icon: cat.icon,
+      color: cat.color,
+      isCustom: false,
+    );
+  }
+
+  factory _BudgetCategory.fromCustom(CustomCategory cat) {
+    return _BudgetCategory(
+      id: cat.id,
+      label: cat.label,
+      icon: cat.icon,
+      color: cat.color,
+      isCustom: true,
+    );
+  }
+}
+
 class BudgetScreen extends StatefulWidget {
   final BudgetService budgetService;
   final TransactionService transactionService;
+  final CategoryService categoryService;
   final CurrencyService currencyService;
   final ScrollController? scrollController;
 
@@ -38,6 +78,7 @@ class BudgetScreen extends StatefulWidget {
     super.key,
     required this.budgetService,
     required this.transactionService,
+    required this.categoryService,
     required this.currencyService,
     this.scrollController,
   });
@@ -71,16 +112,33 @@ class _BudgetScreenState extends State<BudgetScreen> {
     ),
   );
 
-  void _nextMonth() {
-    final next = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
-    if (!next.isAfter(DateTime.now())) {
-      setState(() => _selectedMonth = next);
-    }
+  void _nextMonth() => setState(
+    () => _selectedMonth = DateTime(
+      _selectedMonth.year,
+      _selectedMonth.month + 1,
+    ),
+  );
+
+  bool get _isFutureMonth {
+    final now = DateTime.now();
+    return _selectedMonth.isAfter(DateTime(now.year, now.month));
   }
 
-  bool get _isCurrentMonth {
-    final now = DateTime.now();
-    return _year == now.year && _month == now.month;
+  DateTime get _prevMonthDate =>
+      DateTime(_selectedMonth.year, _selectedMonth.month - 1);
+
+  List<_BudgetCategory> _getAllBudgetCategories() {
+    // Built-in categories
+    final builtIn = _budgetableCategories
+        .map((cat) => _BudgetCategory.fromBuiltIn(cat))
+        .toList();
+
+    // Custom expense categories
+    final custom = widget.categoryService.expenseCategories
+        .map((cat) => _BudgetCategory.fromCustom(cat))
+        .toList();
+
+    return [...builtIn, ...custom];
   }
 
   @override
@@ -90,6 +148,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
       body: ListenableBuilder(
         listenable: Listenable.merge([
           widget.budgetService,
+          widget.categoryService,
           widget.currencyService,
           widget.transactionService,
         ]),
@@ -101,13 +160,22 @@ class _BudgetScreenState extends State<BudgetScreen> {
             _month,
           );
 
-          // Per-category spending
-          final catSpent = <TransactionCategory, double>{};
+          final allCategories = _getAllBudgetCategories();
+
+          // Whether current month has any budget configured
+          final hasAnyBudget =
+              budget.overallLimit != null ||
+              budget.categoryLimits.isNotEmpty ||
+              budget.customCategoryLimits.isNotEmpty;
+
+          // Per-category spending - handle both built-in and custom
+          final catSpent = <String, double>{};
           for (final tx
               in widget.transactionService
                   .transactionsForMonth(_year, _month)
                   .where((t) => t.isExpense)) {
-            catSpent[tx.category] = (catSpent[tx.category] ?? 0) + tx.amount;
+            final categoryId = tx.customCategoryId ?? tx.category.name;
+            catSpent[categoryId] = (catSpent[categoryId] ?? 0) + tx.amount;
           }
 
           return Column(
@@ -126,9 +194,9 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         limit: budget.overallLimit,
                         spent: spent,
                         fmt: fmt,
-                        onEdit: () => _showAmountSheet(
+                        isFutureMonth: _isFutureMonth,
+                        onEdit: () => _showOverallBudgetSheet(
                           context,
-                          title: 'Overall Monthly Budget',
                           current: budget.overallLimit,
                           onSave: (v) => widget.budgetService.setOverallLimit(
                             _year,
@@ -138,6 +206,17 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         ),
                       ),
                     ),
+
+                    // ── Copy from previous month banner ────────────────
+                    if (!hasAnyBudget)
+                      SliverToBoxAdapter(
+                        child: _CopyFromPreviousMonthBanner(
+                          selectedMonth: _selectedMonth,
+                          prevMonthDate: _prevMonthDate,
+                          budgetService: widget.budgetService,
+                          onCopied: () => setState(() {}),
+                        ),
+                      ),
 
                     // ── Category budgets header ─────────────────────────
                     SliverToBoxAdapter(
@@ -155,7 +234,8 @@ class _BudgetScreenState extends State<BudgetScreen> {
                                 letterSpacing: 1.0,
                               ),
                             ),
-                            if (budget.categoryLimits.isNotEmpty)
+                            if (budget.categoryLimits.isNotEmpty ||
+                                budget.customCategoryLimits.isNotEmpty)
                               GestureDetector(
                                 onTap: () => _confirmClearAll(context),
                                 child: const Text(
@@ -175,25 +255,49 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     // ── Category rows ───────────────────────────────────
                     SliverList(
                       delegate: SliverChildBuilderDelegate((ctx, i) {
-                        final cat = _budgetableCategories[i];
-                        final limit = budget.categoryLimits[cat];
-                        final catSpending = catSpent[cat] ?? 0.0;
+                        final budgetCat = allCategories[i];
+                        final double? limit;
+                        if (budgetCat.isCustom) {
+                          limit = budget.customCategoryLimits[budgetCat.id];
+                        } else {
+                          final cat = TransactionCategory.values.firstWhere(
+                            (e) => e.name == budgetCat.id,
+                          );
+                          limit = budget.categoryLimits[cat];
+                        }
+                        final catSpending = catSpent[budgetCat.id] ?? 0.0;
                         return _CategoryBudgetRow(
-                          category: cat,
+                          budgetCategory: budgetCat,
                           limit: limit,
                           spent: catSpending,
                           fmt: fmt,
+                          isFutureMonth: _isFutureMonth,
                           onTap: () => _showAmountSheet(
                             context,
-                            title: cat.label,
-                            icon: cat.icon,
-                            iconColor: cat.color,
+                            budgetCategory: budgetCat,
                             current: limit,
-                            onSave: (v) => widget.budgetService
-                                .setCategoryLimit(_year, _month, cat, v),
+                            onSave: (v) {
+                              if (budgetCat.isCustom) {
+                                widget.budgetService.setCustomCategoryLimit(
+                                  _year,
+                                  _month,
+                                  budgetCat.id,
+                                  v,
+                                );
+                              } else {
+                                final cat = TransactionCategory.values
+                                    .firstWhere((e) => e.name == budgetCat.id);
+                                widget.budgetService.setCategoryLimit(
+                                  _year,
+                                  _month,
+                                  cat,
+                                  v,
+                                );
+                              }
+                            },
                           ),
                         );
-                      }, childCount: _budgetableCategories.length),
+                      }, childCount: allCategories.length),
                     ),
 
                     const SliverToBoxAdapter(child: SizedBox(height: 100)),
@@ -269,73 +373,119 @@ class _BudgetScreenState extends State<BudgetScreen> {
   Widget _buildMonthSelector() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-      child: Container(
-        height: 48,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(
-                Icons.chevron_left_rounded,
-                color: AppColors.textPrimary,
-              ),
-              onPressed: _prevMonth,
-            ),
-            Expanded(
-              child: Text(
-                DateFormat('MMMM yyyy').format(_selectedMonth),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+      child: Column(
+        children: [
+          Container(
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
-              ),
+              ],
             ),
-            IconButton(
-              icon: Icon(
-                Icons.chevron_right_rounded,
-                color: _isCurrentMonth
-                    ? AppColors.textLight
-                    : AppColors.textPrimary,
-              ),
-              onPressed: _isCurrentMonth ? null : _nextMonth,
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(
+                    Icons.chevron_left_rounded,
+                    color: AppColors.textPrimary,
+                  ),
+                  onPressed: _prevMonth,
+                ),
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        DateFormat('MMMM yyyy').format(_selectedMonth),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      if (_isFutureMonth) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'Upcoming',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textPrimary,
+                  ),
+                  onPressed: _nextMonth,
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   // ── Amount input sheet ────────────────────────────────────────────────────
 
-  void _showAmountSheet(
+  void _showOverallBudgetSheet(
     BuildContext context, {
-    required String title,
     required void Function(double?) onSave,
     double? current,
-    IconData? icon,
-    Color? iconColor,
   }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _AmountSheet(
-        title: title,
+        title: 'Overall Monthly Budget',
         current: current,
-        icon: icon,
-        iconColor: iconColor,
+        icon: Icons.account_balance_wallet_rounded,
+        iconColor: AppColors.primary,
+        currencySymbol: widget.currencyService.symbol,
+        onSave: onSave,
+      ),
+    );
+  }
+
+  void _showAmountSheet(
+    BuildContext context, {
+    required _BudgetCategory budgetCategory,
+    required void Function(double?) onSave,
+    double? current,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AmountSheet(
+        title: budgetCategory.label,
+        current: current,
+        icon: budgetCategory.icon,
+        iconColor: budgetCategory.color,
         currencySymbol: widget.currencyService.symbol,
         onSave: onSave,
       ),
@@ -381,10 +531,169 @@ class _BudgetScreenState extends State<BudgetScreen> {
     );
     if (confirmed == true) {
       final budget = widget.budgetService.budgetFor(_year, _month);
+
+      // Clear built-in category limits
       for (final cat in List.of(budget.categoryLimits.keys)) {
         await widget.budgetService.setCategoryLimit(_year, _month, cat, null);
       }
+
+      // Clear custom category limits
+      for (final catId in List.of(budget.customCategoryLimits.keys)) {
+        await widget.budgetService.setCustomCategoryLimit(
+          _year,
+          _month,
+          catId,
+          null,
+        );
+      }
     }
+  }
+}
+
+// ── Copy from previous month banner ──────────────────────────────────────────
+
+class _CopyFromPreviousMonthBanner extends StatelessWidget {
+  final DateTime selectedMonth;
+  final DateTime prevMonthDate;
+  final BudgetService budgetService;
+  final VoidCallback onCopied;
+
+  const _CopyFromPreviousMonthBanner({
+    required this.selectedMonth,
+    required this.prevMonthDate,
+    required this.budgetService,
+    required this.onCopied,
+  });
+
+  bool get _prevHasBudget {
+    final prev = budgetService.budgetFor(
+      prevMonthDate.year,
+      prevMonthDate.month,
+    );
+    return prev.overallLimit != null ||
+        prev.categoryLimits.isNotEmpty ||
+        prev.customCategoryLimits.isNotEmpty;
+  }
+
+  Future<void> _copyBudget(BuildContext context) async {
+    final prev = budgetService.budgetFor(
+      prevMonthDate.year,
+      prevMonthDate.month,
+    );
+    final y = selectedMonth.year;
+    final m = selectedMonth.month;
+
+    // Copy overall limit
+    if (prev.overallLimit != null) {
+      await budgetService.setOverallLimit(y, m, prev.overallLimit);
+    }
+
+    // Copy built-in category limits
+    for (final entry in prev.categoryLimits.entries) {
+      await budgetService.setCategoryLimit(y, m, entry.key, entry.value);
+    }
+
+    // Copy custom category limits
+    for (final entry in prev.customCategoryLimits.entries) {
+      await budgetService.setCustomCategoryLimit(y, m, entry.key, entry.value);
+    }
+
+    onCopied();
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Budget copied from ${DateFormat('MMMM yyyy').format(prevMonthDate)}',
+          ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          backgroundColor: AppColors.primary,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_prevHasBudget) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.content_copy_rounded,
+                color: AppColors.primary,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'No budget set for this month',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Copy settings from ${DateFormat('MMMM yyyy').format(prevMonthDate)}?',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: () => _copyBudget(context),
+              style: TextButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Copy',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -394,21 +703,27 @@ class _OverallBudgetCard extends StatelessWidget {
   final double? limit;
   final double spent;
   final NumberFormat fmt;
+  final bool isFutureMonth;
   final VoidCallback onEdit;
 
   const _OverallBudgetCard({
     required this.limit,
     required this.spent,
     required this.fmt,
+    required this.isFutureMonth,
     required this.onEdit,
   });
 
   @override
   Widget build(BuildContext context) {
     final hasLimit = limit != null && limit! > 0;
-    final ratio = hasLimit ? (spent / limit!).clamp(0.0, 1.0) : 0.0;
-    final remaining = hasLimit ? (limit! - spent).clamp(0.0, limit!) : 0.0;
-    final isOver = hasLimit && spent > limit!;
+    final ratio = (hasLimit && !isFutureMonth)
+        ? (spent / limit!).clamp(0.0, 1.0)
+        : 0.0;
+    final remaining = (hasLimit && !isFutureMonth)
+        ? (limit! - spent).clamp(0.0, limit!)
+        : 0.0;
+    final isOver = hasLimit && !isFutureMonth && spent > limit!;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -489,56 +804,71 @@ class _OverallBudgetCard extends StatelessWidget {
 
             if (hasLimit) ...[
               const SizedBox(height: 20),
-              // Spent / Remaining row
-              Row(
-                children: [
-                  Expanded(
-                    child: _statItem('Spent', fmt.format(spent), Colors.white),
+              if (isFutureMonth) ...[
+                // Future month: just show planned label
+                Text(
+                  'Planned budget — no spending tracked yet',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withValues(alpha: 0.8),
                   ),
-                  Container(
-                    width: 1,
-                    height: 32,
-                    color: Colors.white.withValues(alpha: 0.2),
-                  ),
-                  Expanded(
-                    child: _statItem(
-                      isOver ? 'Over by' : 'Remaining',
-                      fmt.format(isOver ? spent - limit! : remaining),
+                ),
+              ] else ...[
+                // Past / current month: show spent / remaining stats
+                Row(
+                  children: [
+                    Expanded(
+                      child: _statItem(
+                        'Spent',
+                        fmt.format(spent),
+                        Colors.white,
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      height: 32,
+                      color: Colors.white.withValues(alpha: 0.2),
+                    ),
+                    Expanded(
+                      child: _statItem(
+                        isOver ? 'Over by' : 'Remaining',
+                        fmt.format(isOver ? spent - limit! : remaining),
+                        isOver
+                            ? const Color(0xFFFF5252)
+                            : const Color(0xFF69F0AE),
+                        align: TextAlign.right,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                // Progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: ratio,
+                    minHeight: 8,
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
+                    valueColor: AlwaysStoppedAnimation<Color>(
                       isOver
                           ? const Color(0xFFFF5252)
+                          : ratio > 0.8
+                          ? const Color(0xFFFFD740)
                           : const Color(0xFF69F0AE),
-                      align: TextAlign.right,
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              // Progress bar
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: ratio,
-                  minHeight: 8,
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    isOver
-                        ? const Color(0xFFFF5252)
-                        : ratio > 0.8
-                        ? const Color(0xFFFFD740)
-                        : const Color(0xFF69F0AE),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isOver
+                      ? 'You\'ve exceeded your monthly budget'
+                      : '${(ratio * 100).toStringAsFixed(0)}% of budget used',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withValues(alpha: 0.8),
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                isOver
-                    ? 'You\'ve exceeded your monthly budget'
-                    : '${(ratio * 100).toStringAsFixed(0)}% of budget used',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withValues(alpha: 0.8),
-                ),
-              ),
+              ],
             ],
           ],
         ),
@@ -581,30 +911,34 @@ class _OverallBudgetCard extends StatelessWidget {
 // ── Category budget row ───────────────────────────────────────────────────────
 
 class _CategoryBudgetRow extends StatelessWidget {
-  final TransactionCategory category;
+  final _BudgetCategory budgetCategory;
   final double? limit;
   final double spent;
   final NumberFormat fmt;
+  final bool isFutureMonth;
   final VoidCallback onTap;
 
   const _CategoryBudgetRow({
-    required this.category,
+    required this.budgetCategory,
     required this.limit,
     required this.spent,
     required this.fmt,
+    required this.isFutureMonth,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final hasLimit = limit != null && limit! > 0;
-    final ratio = hasLimit ? (spent / limit!).clamp(0.0, 1.0) : 0.0;
-    final isOver = hasLimit && spent > limit!;
+    final ratio = (hasLimit && !isFutureMonth)
+        ? (spent / limit!).clamp(0.0, 1.0)
+        : 0.0;
+    final isOver = hasLimit && !isFutureMonth && spent > limit!;
 
     Color barColor() {
       if (isOver) return const Color(0xFFFF5252);
       if (ratio > 0.8) return const Color(0xFFFFD740);
-      return category.color;
+      return budgetCategory.color;
     }
 
     return GestureDetector(
@@ -630,10 +964,14 @@ class _CategoryBudgetRow extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: category.color.withValues(alpha: 0.12),
+                color: budgetCategory.color.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(13),
               ),
-              child: Icon(category.icon, color: category.color, size: 22),
+              child: Icon(
+                budgetCategory.icon,
+                color: budgetCategory.color,
+                size: 22,
+              ),
             ),
             const SizedBox(width: 14),
 
@@ -646,7 +984,7 @@ class _CategoryBudgetRow extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        category.label,
+                        budgetCategory.label,
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -656,8 +994,10 @@ class _CategoryBudgetRow extends StatelessWidget {
                       // Limit / spent
                       Text(
                         hasLimit
-                            ? '${fmt.format(spent)} / ${fmt.format(limit!)}'
-                            : spent > 0
+                            ? (isFutureMonth
+                                  ? fmt.format(limit!)
+                                  : '${fmt.format(spent)} / ${fmt.format(limit!)}')
+                            : (spent > 0 && !isFutureMonth)
                             ? fmt.format(spent)
                             : 'No limit',
                         style: TextStyle(
@@ -670,7 +1010,7 @@ class _CategoryBudgetRow extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (hasLimit) ...[
+                  if (hasLimit && !isFutureMonth) ...[
                     const SizedBox(height: 8),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(4),
@@ -681,7 +1021,7 @@ class _CategoryBudgetRow extends StatelessWidget {
                         valueColor: AlwaysStoppedAnimation<Color>(barColor()),
                       ),
                     ),
-                  ] else if (spent > 0) ...[
+                  ] else if (spent > 0 && !isFutureMonth) ...[
                     const SizedBox(height: 4),
                     Text(
                       'Tap to set a limit',

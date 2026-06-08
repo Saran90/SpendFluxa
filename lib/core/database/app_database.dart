@@ -19,7 +19,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _dbName = 'spendflux.db';
-  static const _dbVersion = 8;
+  static const _dbVersion = 9;
 
   Database? _db;
   bool _schemaValidated = false;
@@ -237,6 +237,17 @@ class AppDatabase {
         )
       ''');
     }
+    if (oldVersion < 9) {
+      // Add custom_category_limits column to budgets table in version 9
+      // Wrapped in try-catch in case the column was already added manually
+      try {
+        await db.execute(
+          'ALTER TABLE budgets ADD COLUMN custom_category_limits TEXT NOT NULL DEFAULT "{}"',
+        );
+      } catch (_) {
+        // Column already exists — safe to ignore
+      }
+    }
   }
 
   Future<void> _createTables(Database db) async {
@@ -340,11 +351,12 @@ class AppDatabase {
     // Monthly budgets
     await db.execute('''
       CREATE TABLE budgets (
-        id               TEXT PRIMARY KEY,
-        year             INTEGER NOT NULL,
-        month            INTEGER NOT NULL,
-        overall_limit    REAL,
-        category_limits  TEXT NOT NULL DEFAULT '{}',
+        id                      TEXT PRIMARY KEY,
+        year                    INTEGER NOT NULL,
+        month                   INTEGER NOT NULL,
+        overall_limit           REAL,
+        category_limits         TEXT NOT NULL DEFAULT '{}',
+        custom_category_limits  TEXT NOT NULL DEFAULT '{}',
         UNIQUE(year, month)
       )
     ''');

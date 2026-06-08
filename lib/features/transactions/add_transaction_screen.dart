@@ -344,32 +344,48 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     } else if (_isRecurring) {
       // Create or update recurring transactions
       if (widget.editing != null) {
-        // Update the template only — do NOT touch already-recorded instances
-        await widget.transactionService.updateRecurringTemplate(
-          widget.editing!.copyWith(
-            title: '$title (Recurring)',
-            amount: amount,
-            type: _type,
-            category: _selectedCategory,
-            date: _selectedDate,
-            note: _noteController.text.trim().isEmpty
-                ? null
-                : _noteController.text.trim(),
-            accountId: _fromAccount?.id,
-            toAccountId: _type == TransactionType.transfer
-                ? _toAccount?.id
-                : null,
-            tagIds: _selectedTagIds,
-            isRecurring: true,
-            recurringFrequency: _recurringFrequency,
-            recurringEndDate: _recurringEndDate,
-            excludeFromExpense: _excludeFromExpense,
-            isMonthly: _isMonthly,
-            customCategoryId: _selectedCustomCategory?.id,
-          ),
-        );
+        final wasAlreadyRecurring = widget.editing!.isRecurring;
+
+        if (wasAlreadyRecurring) {
+          // Already a recurring template — just update it in place.
+          // Do NOT touch already-recorded instances.
+          await widget.transactionService.updateRecurringTemplate(
+            widget.editing!.copyWith(
+              title: '$title (Recurring)',
+              amount: amount,
+              type: _type,
+              category: _selectedCategory,
+              date: _selectedDate,
+              note: _noteController.text.trim().isEmpty
+                  ? null
+                  : _noteController.text.trim(),
+              accountId: _fromAccount?.id,
+              toAccountId: _type == TransactionType.transfer
+                  ? _toAccount?.id
+                  : null,
+              tagIds: _selectedTagIds,
+              isRecurring: true,
+              recurringFrequency: _recurringFrequency,
+              recurringEndDate: _recurringEndDate,
+              excludeFromExpense: _excludeFromExpense,
+              isMonthly: _isMonthly,
+              customCategoryId: _selectedCustomCategory?.id,
+            ),
+          );
+        } else {
+          // Converting a regular transaction to recurring.
+          // Keep the original entry as-is and create a NEW recurring template
+          // starting from the 1st of next month.
+          final now = DateTime.now();
+          final nextMonthStart = DateTime(now.year, now.month + 1, 1);
+          await _createRecurringTransactionFrom(
+            title,
+            amount,
+            startDate: nextMonthStart,
+          );
+        }
       } else {
-        // Create new recurring template
+        // Brand-new recurring transaction
         await _createRecurringTransactions(title, amount);
       }
     } else {
@@ -460,6 +476,40 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     );
   }
 
+  /// Creates a new recurring template using [startDate] as the template date.
+  /// Used when converting a regular transaction to recurring — the original
+  /// entry is preserved and the recurring series starts from [startDate].
+  Future<void> _createRecurringTransactionFrom(
+    String title,
+    double amount, {
+    required DateTime startDate,
+  }) async {
+    final parentId = (DateTime.now().millisecondsSinceEpoch + 1)
+        .toString(); // unique id
+    await widget.transactionService.addTransaction(
+      Transaction(
+        id: parentId,
+        title: '$title (Recurring)',
+        amount: amount,
+        type: _type,
+        category: _selectedCategory,
+        date: startDate,
+        note: _noteController.text.trim().isEmpty
+            ? null
+            : _noteController.text.trim(),
+        accountId: _fromAccount?.id,
+        toAccountId: _type == TransactionType.transfer ? _toAccount?.id : null,
+        tagIds: _selectedTagIds,
+        isRecurring: true,
+        recurringFrequency: _recurringFrequency,
+        recurringEndDate: _recurringEndDate,
+        excludeFromExpense: _excludeFromExpense,
+        isMonthly: _isMonthly,
+        customCategoryId: _selectedCustomCategory?.id,
+      ),
+    );
+  }
+
   Future<void> _createEmiTransactions(String title, double amount) async {
     final emiAmount = _calculateEmi();
     final parentId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -533,7 +583,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: DateTime.now().add(
+        const Duration(days: 3650),
+      ), // 10 years ahead
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: ColorScheme.light(

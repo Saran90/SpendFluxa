@@ -254,6 +254,7 @@ class _MainShellState extends State<MainShell>
             BudgetScreen(
               budgetService: widget.budgetService,
               transactionService: widget.transactionService,
+              categoryService: widget.categoryService,
               currencyService: widget.currencyService,
               scrollController: _scrollControllers[2],
             ),

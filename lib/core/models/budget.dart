@@ -11,23 +11,29 @@ class MonthlyBudget {
   /// Per-category limits. Only expense categories make sense here.
   final Map<TransactionCategory, double> categoryLimits;
 
+  /// Per-custom-category limits (keyed by custom category ID).
+  final Map<String, double> customCategoryLimits;
+
   const MonthlyBudget({
     required this.year,
     required this.month,
     this.overallLimit,
     this.categoryLimits = const {},
+    this.customCategoryLimits = const {},
   });
 
   MonthlyBudget copyWith({
     double? overallLimit,
     bool clearOverall = false,
     Map<TransactionCategory, double>? categoryLimits,
+    Map<String, double>? customCategoryLimits,
   }) {
     return MonthlyBudget(
       year: year,
       month: month,
       overallLimit: clearOverall ? null : (overallLimit ?? this.overallLimit),
       categoryLimits: categoryLimits ?? this.categoryLimits,
+      customCategoryLimits: customCategoryLimits ?? this.customCategoryLimits,
     );
   }
 
@@ -36,6 +42,7 @@ class MonthlyBudget {
     'month': month,
     'overallLimit': overallLimit,
     'categoryLimits': categoryLimits.map((k, v) => MapEntry(k.name, v)),
+    'customCategoryLimits': customCategoryLimits,
   };
 
   factory MonthlyBudget.fromMap(Map<String, dynamic> map) {
@@ -48,6 +55,14 @@ class MonthlyBudget {
       );
       limits[cat] = (entry.value as num).toDouble();
     }
+
+    final rawCustomLimits =
+        (map['customCategoryLimits'] as Map<String, dynamic>?) ?? {};
+    final customLimits = <String, double>{};
+    for (final entry in rawCustomLimits.entries) {
+      customLimits[entry.key] = (entry.value as num).toDouble();
+    }
+
     return MonthlyBudget(
       year: map['year'] as int,
       month: map['month'] as int,
@@ -55,6 +70,7 @@ class MonthlyBudget {
           ? (map['overallLimit'] as num).toDouble()
           : null,
       categoryLimits: limits,
+      customCategoryLimits: customLimits,
     );
   }
 
