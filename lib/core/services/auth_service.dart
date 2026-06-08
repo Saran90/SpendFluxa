@@ -37,6 +37,8 @@ class AuthService extends ChangeNotifier {
   static const _prefKeyName = 'user_name';
   static const _prefKeyEmail = 'user_email';
   static const _prefKeyPhoto = 'user_photo';
+  static const _prefKeyAccessToken = 'google_drive_access_token';
+  static const _prefKeyTokenExpiry = 'google_drive_token_expiry';
 
   UserProfile? _currentUser;
   GoogleSignInAccount? _googleAccount; // kept for Drive token access
@@ -123,6 +125,44 @@ class AuthService extends ChangeNotifier {
     await prefs.remove(_prefKeyName);
     await prefs.remove(_prefKeyEmail);
     await prefs.remove(_prefKeyPhoto);
+    await prefs.remove(_prefKeyAccessToken);
+    await prefs.remove(_prefKeyTokenExpiry);
+  }
+
+  // ── Access token management (for background backup) ──────────────────────
+
+  /// Persists the Drive access token so the background WorkManager worker
+  /// can upload without needing the user-signed-in [GoogleSignInAccount].
+  /// [expiry] is when the token stops being valid (UTC). Pass null to use
+  /// a default of 50 minutes from now (tokens typically last 60 min).
+  Future<void> saveAccessToken(String token, {DateTime? expiry}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final exp =
+        expiry ?? DateTime.now().toUtc().add(const Duration(minutes: 50));
+    await prefs.setString(_prefKeyAccessToken, token);
+    await prefs.setString(_prefKeyTokenExpiry, exp.toIso8601String());
+  }
+
+  /// Returns the cached Drive access token or null if none / expired.
+  Future<String?> getStoredAccessToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_prefKeyAccessToken);
+    final expiryStr = prefs.getString(_prefKeyTokenExpiry);
+    if (token == null || token.isEmpty) return null;
+    if (expiryStr != null) {
+      final expiry = DateTime.tryParse(expiryStr);
+      if (expiry != null && expiry.isBefore(DateTime.now().toUtc())) {
+        return null; // expired
+      }
+    }
+    return token;
+  }
+
+  /// Clears the stored access token (e.g. on sign-out or auth failure).
+  Future<void> clearAccessToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefKeyAccessToken);
+    await prefs.remove(_prefKeyTokenExpiry);
   }
 
   // ── Sign in ───────────────────────────────────────────────────────────────
@@ -153,6 +193,18 @@ class AuthService extends ChangeNotifier {
       }
 
       _googleAccount = account;
+
+      // Best-effort: obtain a Drive access token now so the background
+      // WorkManager worker can re-use it later without the user account.
+      try {
+        final scopes = [
+          'https://www.googleapis.com/auth/drive.file',
+        ];
+        final auth = await account.authorizationClient.authorizeScopes(scopes);
+        await saveAccessToken(auth.accessToken);
+      } catch (e) {
+        debugPrint('[AuthService] Failed to cache Drive token: $e');
+      }
 
       final profile = UserProfile(
         id: account.id,

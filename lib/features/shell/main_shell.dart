@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/account_service.dart';
@@ -110,6 +111,8 @@ class _MainShellState extends State<MainShell>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _workerStatusTimer?.cancel();
+    _foregroundPollingTimer?.cancel();
     _navController.dispose();
     for (final sc in _scrollControllers) {
       sc.dispose();
@@ -122,6 +125,13 @@ class _MainShellState extends State<MainShell>
     if (state == AppLifecycleState.resumed) {
       // App came back to foreground — check if a backup is now overdue
       _runAutoBackupIfDue();
+      // Also pick up any worker status update from the background.
+      _checkWorkerStatus();
+
+    // While the app is in the foreground, poll the worker status every
+    // 30s so the backup dialog appears the moment the scheduled time
+    // arrives (the user may be looking at the app when the worker fires).
+    _startForegroundStatusPolling();
     }
   }
 
@@ -139,6 +149,13 @@ class _MainShellState extends State<MainShell>
   }
 
   bool _autoBackupRunning = false;
+  Timer? _workerStatusTimer;
+
+  /// Long-running foreground polling timer.  Re-checks the worker status
+  /// every 30s so the dialog appears the moment the background worker
+  /// starts — even if the user is staring at the app when the scheduled
+  /// time arrives.
+  Timer? _foregroundPollingTimer;
 
   Future<void> _runAutoBackupIfDue() async {
     // Guard against concurrent runs (lifecycle resume fires multiple times)
@@ -254,6 +271,193 @@ class _MainShellState extends State<MainShell>
       _autoBackupRunning = false;
     }
   }
+
+  /// Polls the persisted WorkManager worker status and surfaces the
+  /// non-dismissible loader / success / failure banner to the user.
+  ///
+  /// Called on init and on every foreground-resume.  Refreshes the
+  /// [AutoBackupService] from prefs and reacts to the latest status:
+  ///   • [AutoBackupStatus.running] → show the loader dialog
+  ///   • [AutoBackupStatus.success] → show the success snackbar
+  ///   • [AutoBackupStatus.failed]  → show the error snackbar
+  /// The status is then cleared so the next worker run starts fresh.
+  Future<void> _checkWorkerStatus() async {
+    final status = await widget.autoBackupService.refreshWorkerStatus();
+    if (!mounted) return;
+
+    switch (status) {
+      case AutoBackupStatus.running:
+        _showAutoBackupProgressDialog();
+        break;
+      case AutoBackupStatus.success:
+        await widget.autoBackupService.clearWorkerStatus();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Auto-backup completed successfully',
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: const Color(0xFF2D9E6B),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        break;
+      case AutoBackupStatus.failed:
+        final err = widget.autoBackupService.workerError ?? 'Unknown error';
+        await widget.autoBackupService.clearWorkerStatus();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Auto-backup failed: $err'),
+              backgroundColor: Colors.red.shade600,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        break;
+      case AutoBackupStatus.idle:
+        // Nothing to surface.
+        break;
+    }
+  }
+
+  /// Shows the non-dismissible backup progress dialog, but only if there
+  /// isn't already one on screen (avoids stacking dialogs on top of each
+  /// other if the worker status hasn't been cleared yet).
+  /// Shows the non-dismissible backup progress dialog and starts a
+  /// short polling timer that checks the WorkManager worker status every
+  /// 2 seconds.  When the worker reports success or failure, the dialog
+  /// is dismissed and a snackbar is shown.
+  void _showAutoBackupProgressDialog() {
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const _AutoBackupProgressDialog(),
+      );
+    }
+    _startWorkerStatusPolling();
+  }
+
+  /// Polls [AutoBackupService.workerStatus] every 2 seconds.  When it
+  /// transitions from [AutoBackupStatus.running] to a terminal state
+  /// (success / failed), the progress dialog is dismissed and the
+  /// appropriate snackbar is shown.
+  /// Periodically polls the worker status every 30 seconds while the
+  /// app is in the foreground.  When it detects the worker is running,
+  /// it shows the non-dismissible dialog.  When the worker reports a
+  /// terminal state, it surfaces the success/error snackbar.
+  void _startForegroundStatusPolling() {
+    _foregroundPollingTimer?.cancel();
+    _foregroundPollingTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (timer) async {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        await _checkWorkerStatus();
+      },
+    );
+  }
+
+  void _startWorkerStatusPolling() {
+    _workerStatusTimer?.cancel();
+    _workerStatusTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (timer) async {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        final status =
+            await widget.autoBackupService.refreshWorkerStatus();
+        if (status == AutoBackupStatus.running) {
+          return; // still running
+        }
+        // Worker finished — stop polling, close dialog, show result.
+        timer.cancel();
+        _workerStatusTimer = null;
+        if (mounted) {
+          // Dismiss whichever dialog is on top (the progress one).
+          try {
+            Navigator.of(context, rootNavigator: true).pop();
+          } catch (_) {}
+        }
+        if (status == AutoBackupStatus.success) {
+          await widget.autoBackupService.clearWorkerStatus();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text('Auto-backup completed successfully'),
+                    ),
+                  ],
+                ),
+                backgroundColor: const Color(0xFF2D9E6B),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        } else if (status == AutoBackupStatus.failed) {
+          final err =
+              widget.autoBackupService.workerError ?? 'Unknown error';
+          await widget.autoBackupService.clearWorkerStatus();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Auto-backup failed: $err'),
+                backgroundColor: Colors.red.shade600,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+        }
+      },
+    );
+  }
+
 
   Future<void> _checkAndShowOnboarding() async {
     // Wait for the first frame to render

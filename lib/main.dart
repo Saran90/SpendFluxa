@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:workmanager/workmanager.dart';
 import 'core/database/app_database.dart';
 import 'core/services/account_service.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/auto_backup_service.dart';
+import 'core/services/auto_backup_worker.dart';
 import 'core/services/backup_service.dart';
 import 'core/services/biometric_service.dart';
 import 'core/services/budget_service.dart';
@@ -31,6 +33,19 @@ Future<void> main() async {
 
   // Initialize notification service
   await NotificationService().initialize();
+
+  // Initialize WorkManager with the auto-backup dispatcher.  This MUST be
+  // called before any Workmanager().register*Task() call (which happens in
+  // AutoBackupService on app start).
+  try {
+    await Workmanager().initialize(
+      autoBackupDispatcher,
+      isInDebugMode: false,
+    );
+    debugPrint('[main] WorkManager initialised.');
+  } catch (e) {
+    debugPrint('[main] WorkManager init failed: $e');
+  }
 
   runApp(const SpendFluxApp());
 }

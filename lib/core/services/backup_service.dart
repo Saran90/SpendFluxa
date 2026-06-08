@@ -473,33 +473,108 @@ class BackupService extends ChangeNotifier {
     }
   }
 
+  // ── Token-based variants (used by the background WorkManager worker) ──────
+
+  /// Same as [overwriteBackup] but uses a previously cached Drive access
+  /// token. Intended for the background isolate where the
+  /// [GoogleSignInAccount] isn't readily available.
+  ///
+  /// The same _isRunning guard is used so a manual backup triggered from
+  /// the UI is never clobbered by the background worker and vice versa.
+  Future<BackupResult> overwriteBackupWithToken({
+    required String accessToken,
+    required String fileId,
+  }) async {
+    if (_isRunning) {
+      return const BackupResult.failure('A backup is already in progress.');
+    }
+
+    _isRunning = true;
+    notifyListeners();
+
+    try {
+      final httpClient = _AuthenticatedClient(accessToken);
+      final driveApi = drive.DriveApi(httpClient);
+
+      // Checkpoint WAL and close DB
+      final dbBeforeClose = await AppDatabase.instance.database;      await dbBeforeClose.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+
+('PRAGMA wal_checkpoint(TRUNCATE)');
+      await AppDatabase.instance.close();
+
+      final dbDir = await getDatabasesPath();
+      final dbFile = File(p.join(dbDir, _dbName));
+      if (!await dbFile.exists()) {
+        return const BackupResult.failure('Database file not found.');
+      }
+
+      final fileBytes = await dbFile.readAsBytes();
+      final media = drive.Media(
+        Stream.value(fileBytes),
+        fileBytes.length,
+        contentType: 'application/octet-stream',
+      );
+
+      final now = DateTime.now();
+      final stamp =
+          '${now.year.toString().padLeft(4, '0')}-' +
+          '${now.month.toString().padLeft(2, '0')}-' +
+          '${now.day.toString().padLeft(2, '0')}_' +
+          '${now.hour.toString().padLeft(2, '0')}-' +
+          '${now.minute.toString().padLeft(2, '0')}';
+      final newName = 'spendflux_backup_$stamp.db';
+
+      try {
+        final updated = await driveApi.files.update(
+          drive.File()..name = newName,
+          fileId,
+          uploadMedia: media,
+        );
+        final updatedId = updated.id ?? fileId;
+        await _savePrefs(updatedId);
+        return BackupResult.success(updatedId);
+      } catch (e) {
+        final folderId = await _ensureFolder(driveApi);
+        final driveFile = drive.File()
+          ..name = newName
+          ..parents = [folderId]
+          ..mimeType = 'application/octet-stream';
+        final uploaded = await driveApi.files.create(
+          driveFile,
+          uploadMedia: media,
+        );
+        final newId = uploaded.id ?? '';
+        await _savePrefs(newId);
+        return BackupResult.success(newId);
+      }
+    } catch (e) {
+      return BackupResult.failure(e.toString());
+    } finally {
+      try {
+        await AppDatabase.instance.database;
+      } catch (_) {}
+      _isRunning = false;
+      notifyListeners();
+    }
+  }
+
   /// Returns the Drive folder ID for [_driveFolder], creating it if needed.
   Future<String> _ensureFolder(drive.DriveApi api) async {
-    // Search for existing folder
     final result = await api.files.list(
-      q:
-          "mimeType='application/vnd.google-apps.folder' "
-          "and name='$_driveFolder' "
-          "and trashed=false",
+      q: "mimeType='application/vnd.google-apps.folder' and name='$_driveFolder' and trashed=false",
       spaces: 'drive',
       $fields: 'files(id,name)',
     );
-
     if (result.files != null && result.files!.isNotEmpty) {
       return result.files!.first.id!;
     }
-
-    // Create the folder
     final folder = drive.File()
       ..name = _driveFolder
       ..mimeType = 'application/vnd.google-apps.folder';
-
     final created = await api.files.create(folder);
     return created.id!;
   }
 }
-
-// ── Authenticated HTTP client ─────────────────────────────────────────────────
 
 /// Wraps an [http.Client] and injects the Bearer token on every request.
 class _AuthenticatedClient extends http.BaseClient {
