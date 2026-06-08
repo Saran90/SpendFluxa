@@ -28,6 +28,15 @@ enum TransactionCategory {
   investment,
   gift,
   cashback,
+  // Transfer categories
+  savings,
+  childEducation,
+  vacation,
+  emergencyFund,
+  transferInvestment,
+  houseDownPayment,
+  retirement,
+  transferOther,
 }
 
 extension TransactionCategoryExtension on TransactionCategory {
@@ -77,6 +86,22 @@ extension TransactionCategoryExtension on TransactionCategory {
         return 'Gift';
       case TransactionCategory.cashback:
         return 'Cashback';
+      case TransactionCategory.savings:
+        return 'Savings';
+      case TransactionCategory.childEducation:
+        return 'Child Education';
+      case TransactionCategory.vacation:
+        return 'Vacation';
+      case TransactionCategory.emergencyFund:
+        return 'Emergency Fund';
+      case TransactionCategory.transferInvestment:
+        return 'Investment';
+      case TransactionCategory.houseDownPayment:
+        return 'House Down Payment';
+      case TransactionCategory.retirement:
+        return 'Retirement';
+      case TransactionCategory.transferOther:
+        return 'Other';
     }
   }
 
@@ -126,6 +151,22 @@ extension TransactionCategoryExtension on TransactionCategory {
         return Icons.card_giftcard_rounded;
       case TransactionCategory.cashback:
         return Icons.currency_exchange_rounded;
+      case TransactionCategory.savings:
+        return Icons.savings_rounded;
+      case TransactionCategory.childEducation:
+        return Icons.school_rounded;
+      case TransactionCategory.vacation:
+        return Icons.flight_takeoff_rounded;
+      case TransactionCategory.emergencyFund:
+        return Icons.health_and_safety_rounded;
+      case TransactionCategory.transferInvestment:
+        return Icons.trending_up_rounded;
+      case TransactionCategory.houseDownPayment:
+        return Icons.home_work_rounded;
+      case TransactionCategory.retirement:
+        return Icons.elderly_rounded;
+      case TransactionCategory.transferOther:
+        return Icons.swap_horiz_rounded;
     }
   }
 
@@ -175,6 +216,22 @@ extension TransactionCategoryExtension on TransactionCategory {
         return const Color(0xFFE91E63);
       case TransactionCategory.cashback:
         return const Color(0xFF00BCD4);
+      case TransactionCategory.savings:
+        return const Color(0xFF4ECDC4);
+      case TransactionCategory.childEducation:
+        return const Color(0xFF1ABC9C);
+      case TransactionCategory.vacation:
+        return const Color(0xFF3498DB);
+      case TransactionCategory.emergencyFund:
+        return const Color(0xFFE74C3C);
+      case TransactionCategory.transferInvestment:
+        return const Color(0xFF16A085);
+      case TransactionCategory.houseDownPayment:
+        return const Color(0xFF2ECC71);
+      case TransactionCategory.retirement:
+        return const Color(0xFF9B59B6);
+      case TransactionCategory.transferOther:
+        return const Color(0xFF95A5A6);
     }
   }
 }

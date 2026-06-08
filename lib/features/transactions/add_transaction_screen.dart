@@ -70,6 +70,17 @@ const _incomeCategories = [
   TransactionCategory.other,
 ];
 
+const _transferCategories = [
+  TransactionCategory.savings,
+  TransactionCategory.childEducation,
+  TransactionCategory.vacation,
+  TransactionCategory.emergencyFund,
+  TransactionCategory.transferInvestment,
+  TransactionCategory.houseDownPayment,
+  TransactionCategory.retirement,
+  TransactionCategory.transferOther,
+];
+
 class AddTransactionScreen extends StatefulWidget {
   final TransactionService transactionService;
   final CategoryService categoryService;
@@ -156,12 +167,16 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     final builtins =
         (_type == TransactionType.income
                 ? _incomeCategories
+                : _type == TransactionType.transfer
+                ? _transferCategories
                 : _expenseCategories)
             .map((c) => _CategoryItem.builtin(c))
             .toList();
     final customs =
         (_type == TransactionType.income
                 ? widget.categoryService.incomeCategories
+                : _type == TransactionType.transfer
+                ? [] // No custom categories for transfers yet (can add later)
                 : widget.categoryService.expenseCategories)
             .map((c) => _CategoryItem.custom(c))
             .toList();
@@ -279,6 +294,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     if (_type == t) return;
     final defaultCat = t == TransactionType.income
         ? TransactionCategory.salary
+        : t == TransactionType.transfer
+        ? TransactionCategory.savings
         : TransactionCategory.food;
     setState(() {
       _type = t;
@@ -583,10 +600,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                 children: [
                   _buildDateCard(),
                   const SizedBox(height: 16),
-                  if (_type != TransactionType.transfer) ...[
-                    _buildCategoryGrid(),
-                    const SizedBox(height: 16),
-                  ],
+                  _buildCategoryGrid(),
+                  const SizedBox(height: 16),
                   _buildDetailsCard(),
                   const SizedBox(height: 16),
                   _buildTagsCard(),
