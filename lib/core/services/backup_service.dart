@@ -141,12 +141,12 @@ class BackupService extends ChangeNotifier {
   /// If [customFileName] is provided it is used as-is (caller is responsible
   /// for uniqueness checks). Otherwise a timestamped name is generated.
   ///
-  /// [account] must be a signed-in [GoogleSignInAccount]. The method will
-  /// request Drive authorization via [authorizationClient.authorizeScopes]
-  /// (which may show UI on first use) and then upload the database file.
+  /// If [silent] is true, Drive authorization is attempted silently only —
+  /// no UI prompt is shown. Used by auto-backup. Defaults to false.
   Future<BackupResult> backupToGoogleDrive(
     GoogleSignInAccount account, {
     String? customFileName,
+    bool silent = false,
   }) async {
     if (_isRunning) {
       return const BackupResult.failure('A backup is already in progress.');
@@ -156,11 +156,16 @@ class BackupService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1. Obtain a Drive-scoped access token via the v7 authorization API.
-      //    First try silently; if not yet granted, request with UI.
       final scopes = [drive.DriveApi.driveFileScope];
       GoogleSignInClientAuthorization? auth = await account.authorizationClient
           .authorizationForScopes(scopes);
+
+      // In silent mode never show UI — if token unavailable, abort.
+      if (auth == null && silent) {
+        return const BackupResult.failure(
+          'Drive authorization unavailable (silent mode).',
+        );
+      }
       auth ??= await account.authorizationClient.authorizeScopes(scopes);
 
       final accessToken = auth.accessToken;
@@ -374,10 +379,13 @@ class BackupService extends ChangeNotifier {
   /// Used by auto-backup to keep a single up-to-date file rather than
   /// accumulating a new file every day.  If [fileId] no longer exists on
   /// Drive, falls back to creating a new file and returns its ID.
+  ///
+  /// If [silent] is true, Drive authorization is attempted silently only.
   Future<BackupResult> overwriteBackup(
     GoogleSignInAccount account,
-    String fileId,
-  ) async {
+    String fileId, {
+    bool silent = false,
+  }) async {
     if (_isRunning) {
       return const BackupResult.failure('A backup is already in progress.');
     }
@@ -389,6 +397,12 @@ class BackupService extends ChangeNotifier {
       final scopes = [drive.DriveApi.driveFileScope];
       GoogleSignInClientAuthorization? auth = await account.authorizationClient
           .authorizationForScopes(scopes);
+
+      if (auth == null && silent) {
+        return const BackupResult.failure(
+          'Drive authorization unavailable (silent mode).',
+        );
+      }
       auth ??= await account.authorizationClient.authorizeScopes(scopes);
 
       final httpClient = _AuthenticatedClient(auth.accessToken);

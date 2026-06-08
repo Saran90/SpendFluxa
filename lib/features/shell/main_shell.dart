@@ -138,46 +138,66 @@ class _MainShellState extends State<MainShell>
     }
   }
 
+  bool _autoBackupRunning = false;
+
   Future<void> _runAutoBackupIfDue() async {
+    // Guard against concurrent runs (lifecycle resume fires multiple times)
+    if (_autoBackupRunning) return;
+
     // Small delay so the app finishes rendering before doing I/O
     await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+
+    // Wait until AutoBackupService has loaded its persisted state from prefs
+    await widget.autoBackupService.ready;
     if (!mounted) return;
 
     debugPrint('[AutoBackup] ${widget.autoBackupService.debugStatus}');
 
     if (!widget.autoBackupService.isDueNow()) return;
 
-    // Try silent sign-in first; if no account is cached, we can't proceed
-    // without user interaction (auto-backup must be silent).
+    // Try silent sign-in only — auto-backup must never show UI
     var account = widget.authService.googleAccount;
     if (account == null) {
       debugPrint('[AutoBackup] No signed-in account — skipping.');
       return;
     }
 
-    debugPrint('[AutoBackup] Starting auto-backup…');
+    _autoBackupRunning = true;
+    debugPrint('[AutoBackup] Starting auto-backup...');
 
-    final targetId = widget.autoBackupService.targetFileId;
-    BackupResult result;
-    if (targetId != null) {
-      result = await widget.backupService.overwriteBackup(account, targetId);
-      if (result.success &&
-          result.fileId != null &&
-          result.fileId != targetId) {
-        await widget.autoBackupService.setTargetFileId(result.fileId!);
+    try {
+      final targetId = widget.autoBackupService.targetFileId;
+      BackupResult result;
+      if (targetId != null) {
+        result = await widget.backupService.overwriteBackup(
+          account,
+          targetId,
+          silent: true,
+        );
+        if (result.success &&
+            result.fileId != null &&
+            result.fileId != targetId) {
+          await widget.autoBackupService.setTargetFileId(result.fileId!);
+        }
+      } else {
+        result = await widget.backupService.backupToGoogleDrive(
+          account,
+          silent: true,
+        );
+        if (result.success && result.fileId != null) {
+          await widget.autoBackupService.setTargetFileId(result.fileId!);
+        }
       }
-    } else {
-      result = await widget.backupService.backupToGoogleDrive(account);
-      if (result.success && result.fileId != null) {
-        await widget.autoBackupService.setTargetFileId(result.fileId!);
-      }
-    }
 
-    if (result.success) {
-      await widget.autoBackupService.markBackedUpToday();
-      debugPrint('[AutoBackup] Daily backup completed successfully.');
-    } else {
-      debugPrint('[AutoBackup] Daily backup failed: ${result.error}');
+      if (result.success) {
+        await widget.autoBackupService.markBackedUpToday();
+        debugPrint('[AutoBackup] Daily backup completed successfully.');
+      } else {
+        debugPrint('[AutoBackup] Daily backup failed: ${result.error}');
+      }
+    } finally {
+      _autoBackupRunning = false;
     }
   }
 

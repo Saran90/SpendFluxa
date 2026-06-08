@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
@@ -44,6 +46,11 @@ class AutoBackupService extends ChangeNotifier {
     _load();
   }
 
+  /// Completes once the service has loaded its persisted state.
+  /// Await this before calling [isDueNow()] to avoid race conditions.
+  Future<void> get ready => _readyCompleter.future;
+  final _readyCompleter = _Completer();
+
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     _enabled = prefs.getBool(_keyEnabled) ?? false;
@@ -54,6 +61,7 @@ class AutoBackupService extends ChangeNotifier {
     // Re-register the OS alarm on every app start in case it was cleared
     // (e.g. after a device reboot or app update).
     if (_enabled) await scheduleNotification();
+    _readyCompleter._complete();
     notifyListeners();
   }
 
@@ -170,4 +178,19 @@ class AutoBackupService extends ChangeNotifier {
     final now = DateTime.now();
     return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
+}
+
+/// Simple one-shot completer used to signal when async init is done.
+class _Completer {
+  final _c = Completer<void>();
+  bool _done = false;
+
+  void _complete() {
+    if (!_done) {
+      _done = true;
+      _c.complete();
+    }
+  }
+
+  Future<void> get future => _done ? Future.value() : _c.future;
 }
