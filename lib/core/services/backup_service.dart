@@ -217,6 +217,36 @@ class BackupService extends ChangeNotifier {
     }
   }
 
+  /// Deletes a single backup file from Google Drive permanently.
+  Future<BackupResult> deleteBackup(
+    GoogleSignInAccount account,
+    String fileId,
+  ) async {
+    try {
+      final scopes = [drive.DriveApi.driveFileScope];
+      GoogleSignInClientAuthorization? auth = await account.authorizationClient
+          .authorizationForScopes(scopes);
+      auth ??= await account.authorizationClient.authorizeScopes(scopes);
+
+      final driveApi = drive.DriveApi(_AuthenticatedClient(auth.accessToken));
+      await driveApi.files.delete(fileId);
+
+      // If the deleted file was the last-known backup, clear the stored ref
+      if (_lastFileId == fileId) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_prefKeyLastFileId);
+        _lastFileId = null;
+        notifyListeners();
+      }
+
+      debugPrint('[BackupService] Deleted Drive file $fileId');
+      return BackupResult.success(fileId);
+    } catch (e, st) {
+      debugPrint('[BackupService] deleteBackup error: $e\n$st');
+      return BackupResult.failure(e.toString());
+    }
+  }
+
   /// Downloads [fileId] from Drive and replaces the local database with it.
   ///
   /// The app must be restarted (or the DB re-initialised) after a successful

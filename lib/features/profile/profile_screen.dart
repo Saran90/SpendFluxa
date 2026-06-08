@@ -1136,11 +1136,81 @@ class _RestorePickerSheet extends StatefulWidget {
 
 class _RestorePickerSheetState extends State<_RestorePickerSheet> {
   late Future<List<DriveBackupFile>> _backupsFuture;
+  // Local mutable copy so we can remove items without re-fetching
+  List<DriveBackupFile>? _files;
+  // Tracks which file IDs are currently being deleted
+  final Set<String> _deleting = {};
 
   @override
   void initState() {
     super.initState();
-    _backupsFuture = widget.backupService.listBackups(widget.account);
+    _backupsFuture = widget.backupService.listBackups(widget.account).then((
+      files,
+    ) {
+      if (mounted) setState(() => _files = files);
+      return files;
+    });
+  }
+
+  Future<void> _confirmDelete(DriveBackupFile file) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          'Delete Backup?',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
+        ),
+        content: Text(
+          'This will permanently delete "${file.name}" from Google Drive. '
+          'This cannot be undone.',
+          style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.accent),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deleting.add(file.id));
+
+    final result = await widget.backupService.deleteBackup(
+      widget.account,
+      file.id,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _deleting.remove(file.id);
+      if (result.success) {
+        _files?.removeWhere((f) => f.id == file.id);
+      }
+    });
+
+    if (!result.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Delete failed: ${result.error}'),
+          backgroundColor: AppColors.accent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        ),
+      );
+    }
   }
 
   @override
@@ -1199,7 +1269,7 @@ class _RestorePickerSheetState extends State<_RestorePickerSheet> {
                           ),
                           const SizedBox(height: 2),
                           const Text(
-                            'Select a backup to restore',
+                            'Tap to restore • Swipe left to delete',
                             style: TextStyle(
                               fontSize: 12,
                               color: AppColors.textSecondary,
@@ -1221,13 +1291,14 @@ class _RestorePickerSheetState extends State<_RestorePickerSheet> {
             child: FutureBuilder<List<DriveBackupFile>>(
               future: _backupsFuture,
               builder: (ctx, snap) {
-                if (snap.connectionState != ConnectionState.done) {
+                if (snap.connectionState != ConnectionState.done &&
+                    _files == null) {
                   return const Center(
                     child: CircularProgressIndicator(strokeWidth: 2),
                   );
                 }
 
-                final files = snap.data ?? [];
+                final files = _files ?? snap.data ?? [];
 
                 if (files.isEmpty) {
                   return Center(
@@ -1268,81 +1339,164 @@ class _RestorePickerSheetState extends State<_RestorePickerSheet> {
                     vertical: 8,
                   ),
                   itemCount: files.length,
-                  separatorBuilder: (_, _) => const Divider(
+                  separatorBuilder: (_, __) => const Divider(
                     height: 1,
                     indent: 56,
                     color: Color(0xFFF0F2F5),
                   ),
                   itemBuilder: (_, i) {
                     final file = files[i];
+                    final isDeleting = _deleting.contains(file.id);
                     final dateStr = file.modifiedTime != null
                         ? DateFormat(
                             'MMM d, yyyy  HH:mm',
                           ).format(file.modifiedTime!.toLocal())
                         : '';
-                    return InkWell(
-                      onTap: () => widget.onRestore(file.id),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 10,
+
+                    return Dismissible(
+                      key: ValueKey(file.id),
+                      direction: DismissDirection.endToStart,
+                      // Confirmation happens inside _confirmDelete, so we
+                      // return false here to prevent automatic dismissal.
+                      confirmDismiss: (_) async {
+                        await _confirmDelete(file);
+                        return false; // we manage removal ourselves
+                      },
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: const Color(
-                                  0xFF4285F4,
-                                ).withValues(alpha: 0.10),
-                                borderRadius: BorderRadius.circular(10),
+                        child: Icon(
+                          Icons.delete_rounded,
+                          color: AppColors.accent,
+                          size: 22,
+                        ),
+                      ),
+                      child: isDeleting
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 10,
                               ),
-                              child: const Icon(
-                                Icons.storage_rounded,
-                                color: Color(0xFF4285F4),
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
+                              child: Row(
                                 children: [
-                                  Text(
-                                    file.name,
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textPrimary,
+                                  Container(
+                                    width: 38,
+                                    height: 38,
+                                    decoration: BoxDecoration(
+                                      color: const Color(
+                                        0xFF4285F4,
+                                      ).withValues(alpha: 0.10),
+                                      borderRadius: BorderRadius.circular(10),
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                    child: const Center(
+                                      child: SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Color(0xFF4285F4),
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                  if (dateStr.isNotEmpty) ...[
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      dateStr,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'Deleting ${file.name}…',
                                       style: const TextStyle(
-                                        fontSize: 11,
+                                        fontSize: 13,
                                         color: AppColors.textSecondary,
                                       ),
                                     ),
-                                  ],
+                                  ),
                                 ],
                               ),
+                            )
+                          : InkWell(
+                              onTap: () => widget.onRestore(file.id),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                  vertical: 10,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 38,
+                                      height: 38,
+                                      decoration: BoxDecoration(
+                                        color: const Color(
+                                          0xFF4285F4,
+                                        ).withValues(alpha: 0.10),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Icon(
+                                        Icons.storage_rounded,
+                                        color: Color(0xFF4285F4),
+                                        size: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            file.name,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppColors.textPrimary,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          if (dateStr.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              dateStr,
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: AppColors.textSecondary,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // Delete icon button
+                                    InkWell(
+                                      onTap: () => _confirmDelete(file),
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(6),
+                                        child: Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 18,
+                                          color: AppColors.accent.withValues(
+                                            alpha: 0.7,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Icon(
+                                      Icons.chevron_right_rounded,
+                                      color: AppColors.textLight,
+                                      size: 20,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            const SizedBox(width: 8),
-                            const Icon(
-                              Icons.chevron_right_rounded,
-                              color: AppColors.textLight,
-                              size: 20,
-                            ),
-                          ],
-                        ),
-                      ),
                     );
                   },
                 );
