@@ -157,7 +157,7 @@ class _MainShellState extends State<MainShell>
     if (!widget.autoBackupService.isDueNow()) return;
 
     // Try silent sign-in only — auto-backup must never show UI
-    var account = widget.authService.googleAccount;
+    final account = widget.authService.googleAccount;
     if (account == null) {
       debugPrint('[AutoBackup] No signed-in account — skipping.');
       return;
@@ -165,6 +165,15 @@ class _MainShellState extends State<MainShell>
 
     _autoBackupRunning = true;
     debugPrint('[AutoBackup] Starting auto-backup...');
+
+    // Show non-dismissible progress dialog
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const _AutoBackupProgressDialog(),
+      );
+    }
 
     try {
       final targetId = widget.autoBackupService.targetFileId;
@@ -190,12 +199,57 @@ class _MainShellState extends State<MainShell>
         }
       }
 
+      // Close the progress dialog
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+
       if (result.success) {
         await widget.autoBackupService.markBackedUpToday();
         debugPrint('[AutoBackup] Daily backup completed successfully.');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  SizedBox(width: 10),
+                  Text('Auto-backup completed successfully'),
+                ],
+              ),
+              backgroundColor: const Color(0xFF2D9E6B),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       } else {
         debugPrint('[AutoBackup] Daily backup failed: ${result.error}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Auto-backup failed: ${result.error}'),
+              backgroundColor: Colors.red.shade600,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       }
+    } catch (e) {
+      // Safety net — close dialog even on unexpected errors
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      debugPrint('[AutoBackup] Unexpected error: $e');
     } finally {
       _autoBackupRunning = false;
     }
@@ -479,6 +533,73 @@ class _MainShellState extends State<MainShell>
             isActive ? activeIcon : inactiveIcon,
             color: isActive ? AppColors.primary : Colors.white54,
             size: 22,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Auto-backup progress dialog ───────────────────────────────────────────────
+
+class _AutoBackupProgressDialog extends StatelessWidget {
+  const _AutoBackupProgressDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false, // non-dismissible — back button has no effect
+      child: Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Icon
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4285F4).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.backup_rounded,
+                  color: Color(0xFF4285F4),
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 18),
+              // Title
+              const Text(
+                'Backing Up',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Uploading your data to Google Drive...',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 24),
+              // Progress indicator
+              const LinearProgressIndicator(
+                borderRadius: BorderRadius.all(Radius.circular(4)),
+                backgroundColor: Color(0xFFE8F0FE),
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4285F4)),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please wait',
+                style: TextStyle(fontSize: 11, color: AppColors.textLight),
+              ),
+            ],
           ),
         ),
       ),
