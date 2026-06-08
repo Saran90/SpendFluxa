@@ -701,9 +701,16 @@ class _HomeScreenState extends State<HomeScreen>
   ) {
     final isFirst = index == 0;
     final isLast = index == total - 1;
-    final sign = tx.isIncome ? '+' : '-';
+    final isTransfer = tx.type == TransactionType.transfer;
+    final sign = tx.isIncome
+        ? '+'
+        : isTransfer
+        ? ''
+        : '-';
     final amountColor = tx.isIncome
         ? const Color(0xFF2D9E6B)
+        : isTransfer
+        ? const Color(0xFF4ECDC4) // Teal color for transfers
         : AppColors.textPrimary;
     final cat = tx.resolveCategory((id) => widget.categoryService.getById(id));
 
@@ -717,6 +724,13 @@ class _HomeScreenState extends State<HomeScreen>
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
+            // Add subtle border for transfers
+            border: isTransfer
+                ? Border.all(
+                    color: const Color(0xFF4ECDC4).withValues(alpha: 0.3),
+                    width: 1,
+                  )
+                : null,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.04),
@@ -727,7 +741,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           child: Row(
             children: [
-              // Category icon
+              // Category icon - with transfer indicator
               Container(
                 width: 46,
                 height: 46,
@@ -735,7 +749,33 @@ class _HomeScreenState extends State<HomeScreen>
                   color: cat.color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(cat.icon, color: cat.color, size: 22),
+                child: isTransfer
+                    ? Stack(
+                        children: [
+                          Center(
+                            child: Icon(cat.icon, color: cat.color, size: 22),
+                          ),
+                          // Small arrow indicator for transfer
+                          Positioned(
+                            right: 4,
+                            top: 4,
+                            child: Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF4ECDC4),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.arrow_forward_rounded,
+                                color: Colors.white,
+                                size: 10,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Icon(cat.icon, color: cat.color, size: 22),
               ),
               const SizedBox(width: 14),
 
