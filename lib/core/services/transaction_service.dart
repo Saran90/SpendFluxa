@@ -173,6 +173,21 @@ class TransactionService extends ChangeNotifier {
 
     double delta;
 
+    if (tx.type == TransactionType.transfer) {
+      // Handle transfers: debit from source, credit to destination
+      // Debit from source account (accountId)
+      delta = -tx.amount;
+      if (reverse) delta = -delta;
+      await accountService.adjustBalance(tx.accountId!, delta);
+
+      // Credit to destination account (toAccountId)
+      if (tx.toAccountId != null) {
+        final toDelta = reverse ? -tx.amount : tx.amount;
+        await accountService.adjustBalance(tx.toAccountId!, toDelta);
+      }
+      return;
+    }
+
     if (account.type == AccountType.creditCard) {
       // Credit card: expense increases outstanding, income/payment decreases it
       if (tx.type == TransactionType.expense) {
@@ -180,7 +195,7 @@ class TransactionService extends ChangeNotifier {
       } else if (tx.type == TransactionType.income) {
         delta = -tx.amount;
       } else {
-        return; // transfers handled separately via toAccountId
+        return;
       }
     } else {
       // Bank / wallet / cash / savings:
@@ -190,7 +205,7 @@ class TransactionService extends ChangeNotifier {
       } else if (tx.type == TransactionType.expense) {
         delta = -tx.amount;
       } else {
-        return; // transfers handled separately via toAccountId
+        return;
       }
     }
 
