@@ -379,6 +379,10 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
           ),
         );
       } else {
+        // Check if using credit card account
+        final isCreditCardTransaction =
+            _fromAccount?.type == AccountType.creditCard;
+
         await widget.transactionService.addTransaction(
           Transaction(
             id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -395,8 +399,11 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                 ? _toAccount?.id
                 : null,
             tagIds: _selectedTagIds,
-            excludeFromExpense: _excludeFromExpense,
-            isMonthly: _isMonthly,
+            // Credit card transactions are excluded from expense totals but are monthly
+            excludeFromExpense: isCreditCardTransaction
+                ? true
+                : _excludeFromExpense,
+            isMonthly: isCreditCardTransaction ? true : _isMonthly,
             customCategoryId: _selectedCustomCategory?.id,
           ),
         );

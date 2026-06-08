@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../database/app_database.dart';
 import '../models/credit_card_bill.dart';
 import '../models/account.dart';
@@ -179,77 +180,48 @@ class CreditCardBillService extends ChangeNotifier {
       whereArgs: [bill.id],
     );
 
-    // Case 1: Bill amount is LESS than outstanding
+    // Case 1: Bill amount is LESS than or EQUAL to outstanding
     // We pay the bill amount, leaving the remaining as outstanding
     if (bill.billAmount <= currentOutstanding) {
-      // Create bill payment transaction (transfer from bank to credit card)
+      // Always create bill payment transaction as expense + monthly
       final billPaymentTxn = Transaction(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: 'Bill Payment - ${creditCardAccount.name}',
         amount: bill.billAmount,
-        type: TransactionType.income,
+        type: TransactionType.expense,
         category: TransactionCategory.bills,
         date: DateTime.now(),
-        accountId: bill.accountId,
-        note: 'Credit card bill payment',
-        excludeFromExpense: true,
-        isMonthly: false,
+        accountId: fromAccountId, // Expense from bank account
+        note:
+            'Credit card bill payment for ${DateFormat('MMMM yyyy').format(bill.billDate)}',
+        excludeFromExpense: false, // Include in monthly expense
+        isMonthly: true,
       );
       await transactionService.addTransaction(billPaymentTxn);
 
-      // Reduce bank account balance if selected
-      if (fromAccountId != null) {
-        await accountService.adjustBalance(fromAccountId, -bill.billAmount);
-      }
+      // Reduce credit card outstanding by bill amount
+      await accountService.adjustBalance(bill.accountId, -bill.billAmount);
     } else {
       // Case 2: Bill amount is MORE than outstanding
-      // Pay the outstanding first, then the additional amount
+      // Create expense transaction for full bill amount
+      final billPaymentTxn = Transaction(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: 'Bill Payment - ${creditCardAccount.name}',
+        amount: bill.billAmount,
+        type: TransactionType.expense,
+        category: TransactionCategory.bills,
+        date: DateTime.now(),
+        accountId: fromAccountId, // Expense from bank account
+        note:
+            'Credit card bill payment for ${DateFormat('MMMM yyyy').format(bill.billDate)}',
+        excludeFromExpense: false, // Include in monthly expense
+        isMonthly: true,
+      );
+      await transactionService.addTransaction(billPaymentTxn);
 
-      // Pay the outstanding amount
+      // Reduce outstanding to zero (bill covers all outstanding)
       if (currentOutstanding > 0) {
-        final outstandingPaymentTxn = Transaction(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          title: 'Bill Payment - ${creditCardAccount.name}',
-          amount: currentOutstanding,
-          type: TransactionType.income,
-          category: TransactionCategory.bills,
-          date: DateTime.now(),
-          accountId: bill.accountId,
-          note: 'Credit card bill payment',
-          excludeFromExpense: true,
-          isMonthly: false,
-        );
-        await transactionService.addTransaction(outstandingPaymentTxn);
-
-        // Manually reduce bank balance for outstanding portion
-        if (fromAccountId != null) {
-          await accountService.adjustBalance(
-            fromAccountId,
-            -currentOutstanding,
-          );
-        }
-      }
-
-      // Additional payment beyond outstanding
-      final additionalPayment = bill.billAmount - currentOutstanding;
-      if (additionalPayment > 0) {
-        // This additional amount is NEW expense that wasn't previously recorded
-        // Record it as an expense from the bank account
-        // This will automatically reduce bank balance via _applyTransactionDelta
-        final additionalPaymentTxn = Transaction(
-          id: '${DateTime.now().millisecondsSinceEpoch}_additional',
-          title: 'Additional Payment - ${creditCardAccount.name}',
-          amount: additionalPayment,
-          type: TransactionType.expense,
-          category: TransactionCategory.bills,
-          date: DateTime.now(),
-          accountId: fromAccountId, // Expense from bank account
-          note: 'Additional payment beyond outstanding balance',
-          excludeFromExpense: false, // Include in monthly expense
-          isMonthly: true,
-        );
-        await transactionService.addTransaction(additionalPaymentTxn);
-        // No manual bank adjustment needed - transaction handles it
+        await accountService.adjustBalance(bill.accountId, -currentOutstanding);
       }
     }
 
