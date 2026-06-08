@@ -13,6 +13,7 @@ import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../accounts/add_account_sheet.dart';
 import '../tags/add_tag_sheet.dart';
+import 'calculator_sheet.dart';
 
 // Wraps either a built-in TransactionCategory or a user CustomCategory so the
 // grid can render both with the same code.
@@ -186,7 +187,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
           ...widget.categoryService.expenseCategories,
           ...widget.categoryService.incomeCategories,
         ];
-        final found = allCustom.where((c) => c.id == tx.customCategoryId).firstOrNull;
+        final found = allCustom
+            .where((c) => c.id == tx.customCategoryId)
+            .firstOrNull;
         if (found != null) {
           _selectedCustomCategory = found;
           _selectedItem = _CategoryItem.custom(found);
@@ -521,7 +524,25 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     if (picked != null) setState(() => _selectedDate = picked);
   }
 
-  // ΓöÇΓöÇ Build ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  Future<void> _openCalculator() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => CalculatorSheet(
+        initialValue: _amountController.text,
+        accentColor: _typeColor,
+      ),
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _amountController.text = result;
+      });
+    }
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -639,7 +660,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
               ),
             ),
 
-            // Amount ΓÇö the hero element
+            // Amount — the hero element
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 4),
               child: Row(
@@ -702,6 +723,17 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                         return null;
                       },
                     ),
+                  ),
+                  // Calculator button
+                  IconButton(
+                    icon: const Icon(
+                      Icons.calculate_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    onPressed: _openCalculator,
+                    padding: const EdgeInsets.all(8),
+                    tooltip: 'Calculator',
                   ),
                 ],
               ),
