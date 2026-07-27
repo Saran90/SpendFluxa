@@ -84,9 +84,14 @@ class AuthService extends ChangeNotifier {
   /// cached credentials. No UI is shown. If it fails (e.g. token revoked),
   /// _googleAccount stays null and the user will be prompted when they try
   /// to use a Drive feature.
+  // Web client ID from google-services.json (type 3 / server client).
+  // Required by google_sign_in v7+ on Android.
+  static const _webClientId =
+      '318301516437-c3rpuj579o0eujq67nualbpme78thkja.apps.googleusercontent.com';
+
   Future<void> _ensureInitialized() async {
     if (_initialized) return;
-    await _googleSignIn.initialize();
+    await _googleSignIn.initialize(serverClientId: _webClientId);
     _initialized = true;
   }
 
@@ -197,9 +202,7 @@ class AuthService extends ChangeNotifier {
       // Best-effort: obtain a Drive access token now so the background
       // WorkManager worker can re-use it later without the user account.
       try {
-        final scopes = [
-          'https://www.googleapis.com/auth/drive.file',
-        ];
+        final scopes = ['https://www.googleapis.com/auth/drive.file'];
         final auth = await account.authorizationClient.authorizeScopes(scopes);
         await saveAccessToken(auth.accessToken);
       } catch (e) {

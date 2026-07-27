@@ -4,7 +4,6 @@ plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services")
 }
 
 // Read signing config from key.properties if it exists (CI / release builds).
@@ -17,7 +16,7 @@ if (useKeystore) {
 }
 
 android {
-    namespace = "com.spendflux.app"
+    namespace = "com.yuklore.spendflux"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -43,7 +42,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.spendflux.app"
+        applicationId = "com.yuklore.spendflux"
         minSdk = 26  // Required for core library desugaring with notifications
         targetSdk = flutter.targetSdkVersion
 
@@ -53,7 +52,7 @@ android {
         // plugin exposes them as `flutter.versionName` and
         // `flutter.versionCode`, so updating the pubspec is enough —
         // no need to edit this file when bumping the version.
-        versionCode = flutter.versionCode
+        versionCode = 7
         versionName = flutter.versionName
     }
 

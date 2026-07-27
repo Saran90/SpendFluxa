@@ -68,7 +68,10 @@ class NotificationService {
   /// Schedule a daily auto-backup notification/alarm at the given time.
   /// Uses DateTimeComponents.time so it repeats every day at that time,
   /// even when the app is closed.
-  Future<void> scheduleAutoBackup({required int hour, required int minute}) async {
+  Future<void> scheduleAutoBackup({
+    required int hour,
+    required int minute,
+  }) async {
     if (!_initialized) await initialize();
 
     const id = _autoBackupNotificationId;
@@ -108,12 +111,14 @@ class NotificationService {
           presentSound: false,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.inexact,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
     );
-    debugPrint('[AutoBackup] Scheduled daily alarm at $hour:${minute.toString().padLeft(2, '0')}');
+    debugPrint(
+      '[AutoBackup] Scheduled daily alarm at $hour:${minute.toString().padLeft(2, '0')}',
+    );
   }
 
   /// Cancel the daily auto-backup alarm.
@@ -176,7 +181,7 @@ class NotificationService {
           presentSound: true,
         ),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.inexact,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       payload: transaction.id,

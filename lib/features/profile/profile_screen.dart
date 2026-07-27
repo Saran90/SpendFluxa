@@ -305,21 +305,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     // ── Data & Backup ─────────────────────────────────────
                     _groupDivider(),
-                    // SMS Transaction Tracking — hidden for now
-                    // _tile(
-                    //   icon: Icons.sms_rounded,
-                    //   label: 'SMS Transaction Tracking',
-                    //   color: const Color(0xFF4ECDC4),
-                    //   trailing: const Text(
-                    //     'Import from SMS',
-                    //     style: TextStyle(
-                    //       fontSize: 11,
-                    //       color: AppColors.textSecondary,
-                    //     ),
-                    //   ),
-                    //   onTap: () => _showSmsSettings(context),
-                    // ),
-                    // _divider(),
                     ListenableBuilder(
                       listenable: backupService,
                       builder: (context, _) {
@@ -1029,9 +1014,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-
-  // _showSmsSettings — hidden for now (SMS tracking feature disabled)
-  // void _showSmsSettings(BuildContext context) { ... }
 
   Widget _fallback(String name) {
     return Container(

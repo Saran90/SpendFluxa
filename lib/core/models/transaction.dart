@@ -290,11 +290,6 @@ class Transaction {
   // Custom category (user-defined, overrides the built-in category enum)
   final String? customCategoryId;
 
-  // SMS import fields
-  final String? source; // 'manual', 'sms', 'bank_api'
-  final String? smsMessageId; // Original SMS message ID for deduplication
-  final String? bankName; // Bank that sent the SMS
-
   const Transaction({
     required this.id,
     required this.title,
@@ -318,9 +313,6 @@ class Transaction {
     this.recurringEndDate,
     this.recurringParentId,
     this.customCategoryId,
-    this.source,
-    this.smsMessageId,
-    this.bankName,
   });
 
   bool get isExpense => type == TransactionType.expense;
@@ -372,9 +364,6 @@ class Transaction {
     DateTime? recurringEndDate,
     String? recurringParentId,
     String? customCategoryId,
-    String? source,
-    String? smsMessageId,
-    String? bankName,
   }) {
     return Transaction(
       id: id,
@@ -399,9 +388,6 @@ class Transaction {
       recurringEndDate: recurringEndDate ?? this.recurringEndDate,
       recurringParentId: recurringParentId ?? this.recurringParentId,
       customCategoryId: customCategoryId ?? this.customCategoryId,
-      source: source ?? this.source,
-      smsMessageId: smsMessageId ?? this.smsMessageId,
-      bankName: bankName ?? this.bankName,
     );
   }
 
@@ -427,9 +413,6 @@ class Transaction {
     'recurringEndDate': recurringEndDate?.toIso8601String(),
     'recurringParentId': recurringParentId,
     'customCategoryId': customCategoryId,
-    'source': source,
-    'smsMessageId': smsMessageId,
-    'bankName': bankName,
   };
 
   factory Transaction.fromMap(Map<String, dynamic> map) => Transaction(
@@ -468,8 +451,5 @@ class Transaction {
         : null,
     recurringParentId: map['recurringParentId'] as String?,
     customCategoryId: map['customCategoryId'] as String?,
-    source: map['source'] as String?,
-    smsMessageId: map['smsMessageId'] as String?,
-    bankName: map['bankName'] as String?,
   );
 }
