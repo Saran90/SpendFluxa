@@ -38,10 +38,7 @@ Future<void> main() async {
   // called before any Workmanager().register*Task() call (which happens in
   // AutoBackupService on app start).
   try {
-    await Workmanager().initialize(
-      autoBackupDispatcher,
-      isInDebugMode: false,
-    );
+    await Workmanager().initialize(autoBackupDispatcher, isInDebugMode: false);
     debugPrint('[main] WorkManager initialised.');
   } catch (e) {
     debugPrint('[main] WorkManager init failed: $e');
@@ -80,8 +77,45 @@ class _SpendFluxAppState extends State<SpendFluxApp> {
     transactionService: _transactionService,
   );
 
+  // Track the last signed-in user so we can detect a new sign-in after sign-out.
+  String? _lastSignedInUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    _authService.addListener(_onAuthChanged);
+  }
+
+  /// Called whenever AuthService notifies listeners.
+  ///
+  /// When a *different* user signs in (or the first sign-in after a sign-out),
+  /// we reload all services so they pick up the clean database instead of
+  /// serving the previous user's in-memory state.
+  void _onAuthChanged() {
+    final user = _authService.currentUser;
+    if (user != null && user.id != _lastSignedInUserId) {
+      _lastSignedInUserId = user.id;
+      _reloadAllServices();
+    } else if (user == null) {
+      _lastSignedInUserId = null;
+    }
+  }
+
+  Future<void> _reloadAllServices() async {
+    debugPrint('[main] New user detected — reloading all services.');
+    await Future.wait([
+      _accountService.reload(),
+      _categoryService.reload(),
+      _tagService.reload(),
+      _budgetService.reload(),
+      _transactionService.reload(),
+    ]);
+    debugPrint('[main] All services reloaded for new user.');
+  }
+
   @override
   void dispose() {
+    _authService.removeListener(_onAuthChanged);
     _authService.dispose();
     _transactionService.dispose();
     _categoryService.dispose();

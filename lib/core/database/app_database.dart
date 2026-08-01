@@ -845,6 +845,41 @@ class AppDatabase {
     },
   ];
 
+  // ── User data management ───────────────────────────────────────────────────
+
+  /// Deletes all user-owned data from the database.
+  ///
+  /// Call this on sign-out so the next user starts with a clean slate.
+  /// Built-in data (categories, currencies) is preserved.
+  /// User-created accounts are deleted and the default seed accounts are
+  /// re-inserted so the app works correctly for the next sign-in.
+  Future<void> clearUserData() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      // Delete all user data tables
+      await txn.delete('transactions');
+      await txn.delete('budgets');
+      await txn.delete('tags');
+      await txn.delete('custom_categories');
+      await txn.delete('reminders');
+      await txn.delete('recurring_confirmations');
+      await txn.delete('credit_card_bills');
+      await txn.delete('accounts');
+
+      // Re-seed default accounts so the next user has a working starting state
+      for (final acc in _defaultAccounts()) {
+        await txn.insert(
+          'accounts',
+          acc,
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    });
+    debugPrint(
+      '[AppDatabase] User data cleared and default accounts restored.',
+    );
+  }
+
   // ── Generic query helpers ──────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> query(

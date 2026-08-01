@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../database/app_database.dart';
 
 /// Holds the signed-in user's basic profile data.
 class UserProfile {
@@ -240,6 +241,8 @@ class AuthService extends ChangeNotifier {
     _setLoading(true);
     try {
       await _googleSignIn.signOut();
+      // Clear all user-owned DB data so the next sign-in starts clean.
+      await AppDatabase.instance.clearUserData();
     } catch (e) {
       debugPrint('[AuthService] signOut error: $e');
     } finally {
