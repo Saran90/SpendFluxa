@@ -285,6 +285,21 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
   }
 
   Widget _buildInfoCard() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final startDate = DateTime(
+      transaction.date.year,
+      transaction.date.month,
+      transaction.date.day,
+    );
+    final isPast = startDate.isBefore(today);
+    final next = _nextOccurrence;
+
+    final dateLabel = isPast ? 'Next Date' : 'Start Date';
+    final dateValue = isPast && next != null
+        ? DateFormat('EEEE, MMM d, yyyy').format(next)
+        : DateFormat('EEEE, MMM d, yyyy').format(transaction.date);
+
     return _Card(
       child: Column(
         children: [
@@ -298,8 +313,8 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
           _InfoRow(
             icon: Icons.calendar_today_rounded,
             iconColor: _typeColor,
-            label: 'Start Date',
-            value: DateFormat('EEEE, MMM d, yyyy').format(transaction.date),
+            label: dateLabel,
+            value: dateValue,
           ),
         ],
       ),
