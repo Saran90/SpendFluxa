@@ -9,7 +9,7 @@ import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
 import 'add_transaction_screen.dart';
 
-class RecurringTransactionDetailScreen extends StatelessWidget {
+class RecurringTransactionDetailScreen extends StatefulWidget {
   final Transaction transaction;
   final TransactionService transactionService;
   final CurrencyService currencyService;
@@ -26,6 +26,37 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
     required this.accountService,
     required this.tagService,
   });
+
+  @override
+  State<RecurringTransactionDetailScreen> createState() =>
+      _RecurringTransactionDetailScreenState();
+}
+
+class _RecurringTransactionDetailScreenState
+    extends State<RecurringTransactionDetailScreen> {
+  // null = still checking, true = recorded, false = not recorded
+  bool? _isNextOccurrenceRecorded;
+
+  Transaction get transaction => widget.transaction;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkNextOccurrenceRecorded();
+  }
+
+  void _checkNextOccurrenceRecorded() {
+    final next = _nextOccurrence;
+    if (next == null) return;
+    final recorded = widget.transactionService.allTransactions.any(
+      (t) =>
+          t.recurringParentId == transaction.id &&
+          t.date.year == next.year &&
+          t.date.month == next.month &&
+          t.date.day == next.day,
+    );
+    setState(() => _isNextOccurrenceRecorded = recorded);
+  }
 
   List<Color> get _gradient {
     switch (transaction.type) {
@@ -110,7 +141,7 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fmt = currencyService.formatter;
+    final fmt = widget.currencyService.formatter;
     final sign = transaction.isIncome ? '+' : '-';
 
     return Scaffold(
@@ -201,7 +232,7 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      currencyService.symbol,
+                      widget.currencyService.symbol,
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w400,
@@ -214,7 +245,7 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
                       child: Text(
                         fmt
                             .format(transaction.amount)
-                            .replaceFirst(currencyService.symbol, ''),
+                            .replaceFirst(widget.currencyService.symbol, ''),
                         style: const TextStyle(
                           fontSize: 44,
                           fontWeight: FontWeight.w700,
@@ -310,11 +341,94 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
             value: transaction.category.label,
           ),
           _divider(),
-          _InfoRow(
-            icon: Icons.calendar_today_rounded,
-            iconColor: _typeColor,
-            label: dateLabel,
-            value: dateValue,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: _typeColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.calendar_today_rounded,
+                    size: 17,
+                    color: _typeColor,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        dateLabel,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        dateValue,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
+                          height: 1.4,
+                        ),
+                      ),
+                      // Recorded status badge — only when date has passed
+                      if (isPast && next != null) ...[
+                        const SizedBox(height: 6),
+                        if (_isNextOccurrenceRecorded == null)
+                          const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: AppColors.textSecondary,
+                            ),
+                          )
+                        else
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _isNextOccurrenceRecorded!
+                                    ? Icons.check_circle_rounded
+                                    : Icons.warning_amber_rounded,
+                                size: 13,
+                                color: _isNextOccurrenceRecorded!
+                                    ? const Color(0xFF2D9E6B)
+                                    : const Color(0xFFFF9800),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _isNextOccurrenceRecorded!
+                                    ? 'Transaction recorded'
+                                    : 'Not yet recorded',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: _isNextOccurrenceRecorded!
+                                      ? const Color(0xFF2D9E6B)
+                                      : const Color(0xFFFF9800),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -382,7 +496,7 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
   }
 
   Widget _buildAccountCard() {
-    final account = accountService.all
+    final account = widget.accountService.all
         .where((a) => a.id == transaction.accountId)
         .firstOrNull;
     if (account == null) return const SizedBox();
@@ -447,11 +561,11 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
     await Navigator.of(context).push(
       PageRouteBuilder(
         pageBuilder: (context, animation, _) => AddTransactionScreen(
-          transactionService: transactionService,
-          categoryService: categoryService,
-          currencyService: currencyService,
-          accountService: accountService,
-          tagService: tagService,
+          transactionService: widget.transactionService,
+          categoryService: widget.categoryService,
+          currencyService: widget.currencyService,
+          accountService: widget.accountService,
+          tagService: widget.tagService,
           editing: transaction,
           editRecurringTemplateOnly: true,
         ),

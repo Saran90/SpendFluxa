@@ -31,6 +31,76 @@ class TransactionDetailScreen extends StatelessWidget {
     this.reminderService,
   });
 
+  // ── Next occurrence for recurring transactions ────────────────────────────
+
+  /// For a recurring template, returns the next occurrence date on or after
+  /// today. Returns null for non-recurring transactions or ended series.
+  DateTime? get _nextOccurrence {
+    if (!transaction.isRecurring || transaction.recurringParentId != null) {
+      return null;
+    }
+    final frequency = transaction.recurringFrequency;
+    if (frequency == null) return null;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final endDate = transaction.recurringEndDate;
+
+    var current = DateTime(
+      transaction.date.year,
+      transaction.date.month,
+      transaction.date.day,
+    );
+
+    while (current.isBefore(today)) {
+      current = _advanceDate(current, frequency);
+    }
+
+    if (endDate != null && current.isAfter(endDate)) return null;
+    return current;
+  }
+
+  DateTime _advanceDate(DateTime current, String frequency) {
+    switch (frequency) {
+      case 'daily':
+        return DateTime(current.year, current.month, current.day + 1);
+      case 'weekly':
+        return DateTime(current.year, current.month, current.day + 7);
+      case 'monthly':
+        return DateTime(current.year, current.month + 1, current.day);
+      case 'quarterly':
+        return DateTime(current.year, current.month + 3, current.day);
+      case 'yearly':
+        return DateTime(current.year + 1, current.month, current.day);
+      default:
+        if (frequency.startsWith('custom_')) {
+          final days = int.tryParse(frequency.substring(7)) ?? 1;
+          return DateTime(current.year, current.month, current.day + days);
+        }
+        return current;
+    }
+  }
+
+  /// The display date: next occurrence for recurring templates whose start
+  /// date has passed; otherwise the transaction's own date.
+  DateTime get _displayDate {
+    final next = _nextOccurrence;
+    if (next != null) {
+      final today = DateTime(
+        DateTime.now().year,
+        DateTime.now().month,
+        DateTime.now().day,
+      );
+      final startDate = DateTime(
+        transaction.date.year,
+        transaction.date.month,
+        transaction.date.day,
+      );
+      if (startDate.isBefore(today)) return next;
+    }
+    return transaction.date;
+  }
+
   // ── Gradient colours matching AddTransactionScreen ────────────────────────
 
   List<Color> get _gradient {
@@ -231,7 +301,7 @@ class TransactionDetailScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        DateFormat('MMM d, yyyy').format(transaction.date),
+                        DateFormat('MMM d, yyyy').format(_displayDate),
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -264,14 +334,20 @@ class TransactionDetailScreen extends StatelessWidget {
             value: cat.label,
           ),
           _divider(),
-          // Date & time
+          // Date
           _Row(
             icon: Icons.calendar_today_rounded,
             iconColor: _typeColor,
-            label: 'Date',
-            value: DateFormat(
-              'EEEE, MMM d, yyyy  •  h:mm a',
-            ).format(transaction.date),
+            label:
+                transaction.isRecurring && transaction.recurringParentId == null
+                ? 'Next Payment Date'
+                : 'Date',
+            value:
+                transaction.isRecurring && transaction.recurringParentId == null
+                ? DateFormat('EEEE, MMM d, yyyy').format(_displayDate)
+                : DateFormat(
+                    'EEEE, MMM d, yyyy  •  h:mm a',
+                  ).format(transaction.date),
           ),
           // Note
           if (transaction.note != null && transaction.note!.isNotEmpty) ...[
