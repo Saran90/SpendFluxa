@@ -207,7 +207,9 @@ class TransactionDetailScreen extends StatelessWidget {
                     Expanded(
                       child: Text(
                         transaction.title.isEmpty
-                            ? transaction.resolveCategory(categoryService.getById).label
+                            ? transaction
+                                  .resolveCategory(categoryService.getById)
+                                  .label
                             : transaction.title,
                         style: const TextStyle(
                           fontSize: 18,
@@ -460,7 +462,14 @@ class TransactionDetailScreen extends StatelessWidget {
             iconColor: AppColors.primary,
             label: 'Recurring',
             value: transaction.recurringFrequency != null
-                ? _capitalize(transaction.recurringFrequency!)
+                ? () {
+                    final f = transaction.recurringFrequency!;
+                    if (f == 'quarterly') return 'Quarterly';
+                    if (f.startsWith('custom_')) {
+                      return 'Every ${f.substring(7)} days';
+                    }
+                    return _capitalize(f);
+                  }()
                 : 'Yes',
           ),
           if (transaction.recurringEndDate != null) ...[

@@ -1129,11 +1129,19 @@ class _HomeScreenState extends State<HomeScreen>
       case 'monthly':
         frequencyLabel = 'Monthly';
         break;
+      case 'quarterly':
+        frequencyLabel = 'Quarterly';
+        break;
       case 'yearly':
         frequencyLabel = 'Yearly';
         break;
       default:
-        frequencyLabel = 'Recurring';
+        final f = tx.recurringFrequency ?? '';
+        if (f.startsWith('custom_')) {
+          frequencyLabel = 'Every ${f.substring(7)} days';
+        } else {
+          frequencyLabel = 'Recurring';
+        }
     }
 
     return GestureDetector(

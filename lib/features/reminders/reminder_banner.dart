@@ -226,7 +226,11 @@ class ReminderBanner extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    transaction.recurringFrequency?.toUpperCase() ?? '',
+                    transaction.recurringFrequency != null
+                        ? _formatFrequency(
+                            transaction.recurringFrequency,
+                          ).toUpperCase()
+                        : '',
                     style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w600,
@@ -299,6 +303,28 @@ class ReminderBanner extends StatelessWidget {
     return upcomingReminders;
   }
 
+  /// Formats a recurring frequency string for display.
+  String _formatFrequency(String? frequency) {
+    if (frequency == null) return '';
+    switch (frequency) {
+      case 'daily':
+        return 'Daily';
+      case 'weekly':
+        return 'Weekly';
+      case 'monthly':
+        return 'Monthly';
+      case 'quarterly':
+        return 'Quarterly';
+      case 'yearly':
+        return 'Yearly';
+      default:
+        if (frequency.startsWith('custom_')) {
+          return 'Every ${frequency.substring(7)} days';
+        }
+        return frequency;
+    }
+  }
+
   /// Calculate next occurrence of a recurring transaction
   DateTime? _getNextOccurrence(Transaction transaction) {
     if (!transaction.isRecurring || transaction.recurringFrequency == null) {
@@ -333,9 +359,16 @@ class ReminderBanner extends StatelessWidget {
         return DateTime(current.year, current.month, current.day + 7);
       case 'monthly':
         return DateTime(current.year, current.month + 1, current.day);
+      case 'quarterly':
+        return DateTime(current.year, current.month + 3, current.day);
       case 'yearly':
         return DateTime(current.year + 1, current.month, current.day);
       default:
+        // 'custom_N' — repeat every N days
+        if (frequency.startsWith('custom_')) {
+          final days = int.tryParse(frequency.substring(7)) ?? 1;
+          return DateTime(current.year, current.month, current.day + days);
+        }
         return current;
     }
   }

@@ -86,6 +86,28 @@ class _ReminderConfigScreenState extends State<ReminderConfigScreen> {
     );
   }
 
+  /// Formats a recurring frequency string for display.
+  String _formatFrequency(String? frequency) {
+    if (frequency == null) return '';
+    switch (frequency) {
+      case 'daily':
+        return 'Daily';
+      case 'weekly':
+        return 'Weekly';
+      case 'monthly':
+        return 'Monthly';
+      case 'quarterly':
+        return 'Quarterly';
+      case 'yearly':
+        return 'Yearly';
+      default:
+        if (frequency.startsWith('custom_')) {
+          return 'Every ${frequency.substring(7)} days';
+        }
+        return frequency;
+    }
+  }
+
   Widget _buildTransactionInfo() {
     return Container(
       margin: const EdgeInsets.all(20),
@@ -133,7 +155,7 @@ class _ReminderConfigScreenState extends State<ReminderConfigScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Recurring ${widget.recurringTransaction.recurringFrequency}',
+                  'Recurring ${_formatFrequency(widget.recurringTransaction.recurringFrequency)}',
                   style: const TextStyle(
                     fontSize: 13,
                     color: AppColors.textSecondary,

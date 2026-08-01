@@ -48,9 +48,16 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
         return 'Weekly';
       case 'monthly':
         return 'Monthly';
+      case 'quarterly':
+        return 'Quarterly';
       case 'yearly':
         return 'Yearly';
       default:
+        final f = transaction.recurringFrequency ?? '';
+        if (f.startsWith('custom_')) {
+          final days = f.substring(7);
+          return 'Every $days days';
+        }
         return 'Recurring';
     }
   }
@@ -78,7 +85,8 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
                   _buildAccountCard(),
                   const SizedBox(height: 14),
                 ],
-                if (transaction.note != null && transaction.note!.isNotEmpty) ...[
+                if (transaction.note != null &&
+                    transaction.note!.isNotEmpty) ...[
                   _buildNoteCard(),
                   const SizedBox(height: 14),
                 ],

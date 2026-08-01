@@ -138,6 +138,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
   bool _isRecurring = false;
   String _recurringFrequency = 'monthly';
   DateTime? _recurringEndDate;
+  int _customDays = 28; // used when _recurringFrequency == 'custom'
+  final _customDaysController = TextEditingController(text: '28');
+
+  /// The actual frequency string to persist — 'custom' is expanded to 'custom_N'.
+  String get _resolvedFrequency => _recurringFrequency == 'custom'
+      ? 'custom_$_customDays'
+      : _recurringFrequency;
 
   // Animate the header color when type changes
   late AnimationController _colorAnim;
@@ -225,6 +232,15 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
       _isRecurring = tx.isRecurring;
       if (tx.recurringFrequency != null) {
         _recurringFrequency = tx.recurringFrequency!;
+        // If it's a custom frequency, restore the day count
+        if (_recurringFrequency.startsWith('custom_')) {
+          final days = int.tryParse(_recurringFrequency.substring(7));
+          if (days != null) {
+            _customDays = days;
+            _customDaysController.text = days.toString();
+          }
+          _recurringFrequency = 'custom';
+        }
       }
       _recurringEndDate = tx.recurringEndDate;
       if (tx.emiInterestRate != null) {
@@ -287,6 +303,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
     _titleController.dispose();
     _noteController.dispose();
     _emiInterestController.dispose();
+    _customDaysController.dispose();
     super.dispose();
   }
 
@@ -365,7 +382,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                   : null,
               tagIds: _selectedTagIds,
               isRecurring: true,
-              recurringFrequency: _recurringFrequency,
+              recurringFrequency: _resolvedFrequency,
               recurringEndDate: _recurringEndDate,
               excludeFromExpense: _excludeFromExpense,
               isMonthly: _isMonthly,
@@ -462,7 +479,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
         toAccountId: _type == TransactionType.transfer ? _toAccount?.id : null,
         tagIds: _selectedTagIds,
         isRecurring: true,
-        recurringFrequency: _recurringFrequency,
+        recurringFrequency: _resolvedFrequency,
         recurringEndDate: _recurringEndDate,
         excludeFromExpense: _excludeFromExpense,
         isMonthly: _isMonthly,
@@ -496,7 +513,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
         toAccountId: _type == TransactionType.transfer ? _toAccount?.id : null,
         tagIds: _selectedTagIds,
         isRecurring: true,
-        recurringFrequency: _recurringFrequency,
+        recurringFrequency: _resolvedFrequency,
         recurringEndDate: _recurringEndDate,
         excludeFromExpense: _excludeFromExpense,
         isMonthly: _isMonthly,
@@ -2155,9 +2172,78 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                       _frequencyChip('Daily', 'daily'),
                       _frequencyChip('Weekly', 'weekly'),
                       _frequencyChip('Monthly', 'monthly'),
+                      _frequencyChip('Quarterly', 'quarterly'),
                       _frequencyChip('Yearly', 'yearly'),
+                      _frequencyChip('Custom', 'custom'),
                     ],
                   ),
+                  // Day-count input shown only when Custom is selected
+                  if (_recurringFrequency == 'custom') ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Text(
+                          'Every',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 72,
+                          child: TextField(
+                            controller: _customDaysController,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                            decoration: InputDecoration(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              isDense: true,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: _typeColor),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(
+                                  color: _typeColor,
+                                  width: 1.5,
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(
+                                  color: _typeColor.withValues(alpha: 0.4),
+                                ),
+                              ),
+                            ),
+                            onChanged: (val) {
+                              final n = int.tryParse(val);
+                              if (n != null && n > 0) {
+                                setState(() => _customDays = n);
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Text(
+                          'days',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

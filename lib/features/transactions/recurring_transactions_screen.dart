@@ -93,10 +93,7 @@ class RecurringTransactionsScreen extends StatelessWidget {
           child: Row(
             children: [
               IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: Colors.white,
-                ),
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                 onPressed: () => Navigator.of(context).pop(),
               ),
               const SizedBox(width: 4),
@@ -171,9 +168,16 @@ class _RecurringTile extends StatelessWidget {
         return 'Weekly';
       case 'monthly':
         return 'Monthly';
+      case 'quarterly':
+        return 'Quarterly';
       case 'yearly':
         return 'Yearly';
       default:
+        final f = tx.recurringFrequency ?? '';
+        if (f.startsWith('custom_')) {
+          final days = f.substring(7);
+          return 'Every $days days';
+        }
         return 'Recurring';
     }
   }
@@ -181,8 +185,9 @@ class _RecurringTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sign = tx.isIncome ? '+' : '-';
-    final amountColor =
-        tx.isIncome ? const Color(0xFF2D9E6B) : AppColors.textPrimary;
+    final amountColor = tx.isIncome
+        ? const Color(0xFF2D9E6B)
+        : AppColors.textPrimary;
 
     return GestureDetector(
       onTap: onTap,
@@ -212,7 +217,11 @@ class _RecurringTile extends StatelessWidget {
                     color: tx.category.color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(tx.category.icon, color: tx.category.color, size: 22),
+                  child: Icon(
+                    tx.category.icon,
+                    color: tx.category.color,
+                    size: 22,
+                  ),
                 ),
                 Positioned(
                   right: -4,

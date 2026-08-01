@@ -143,9 +143,16 @@ class ReminderService extends ChangeNotifier {
         return DateTime(current.year, current.month, current.day + 7);
       case 'monthly':
         return DateTime(current.year, current.month + 1, current.day);
+      case 'quarterly':
+        return DateTime(current.year, current.month + 3, current.day);
       case 'yearly':
         return DateTime(current.year + 1, current.month, current.day);
       default:
+        // 'custom_N' — repeat every N days
+        if (frequency.startsWith('custom_')) {
+          final days = int.tryParse(frequency.substring(7)) ?? 1;
+          return DateTime(current.year, current.month, current.day + days);
+        }
         return current;
     }
   }
