@@ -62,6 +62,52 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
     }
   }
 
+  /// Returns the next occurrence date after today, or null if the series has ended.
+  DateTime? get _nextOccurrence {
+    final frequency = transaction.recurringFrequency;
+    if (frequency == null) return null;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final endDate = transaction.recurringEndDate;
+
+    var current = DateTime(
+      transaction.date.year,
+      transaction.date.month,
+      transaction.date.day,
+    );
+
+    // Advance until we reach a date on or after today
+    while (current.isBefore(today)) {
+      current = _nextDate(current, frequency);
+    }
+
+    // If it lands exactly on today, show today; otherwise it's a future date
+    if (endDate != null && current.isAfter(endDate)) return null;
+    return current;
+  }
+
+  DateTime _nextDate(DateTime current, String frequency) {
+    switch (frequency) {
+      case 'daily':
+        return DateTime(current.year, current.month, current.day + 1);
+      case 'weekly':
+        return DateTime(current.year, current.month, current.day + 7);
+      case 'monthly':
+        return DateTime(current.year, current.month + 1, current.day);
+      case 'quarterly':
+        return DateTime(current.year, current.month + 3, current.day);
+      case 'yearly':
+        return DateTime(current.year + 1, current.month, current.day);
+      default:
+        if (frequency.startsWith('custom_')) {
+          final days = int.tryParse(frequency.substring(7)) ?? 1;
+          return DateTime(current.year, current.month, current.day + days);
+        }
+        return current;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final fmt = currencyService.formatter;
@@ -261,6 +307,23 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
   }
 
   Widget _buildRecurringCard() {
+    final next = _nextOccurrence;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    String nextLabel;
+    if (next == null) {
+      nextLabel = 'Series ended';
+    } else if (next == today) {
+      nextLabel = 'Today';
+    } else {
+      final daysAway = next.difference(today).inDays;
+      final dateStr = DateFormat('MMM d, yyyy').format(next);
+      nextLabel = daysAway == 1
+          ? 'Tomorrow · $dateStr'
+          : 'In $daysAway days · $dateStr';
+    }
+
     return _Card(
       child: Column(
         children: [
@@ -269,6 +332,15 @@ class RecurringTransactionDetailScreen extends StatelessWidget {
             iconColor: AppColors.primary,
             label: 'Frequency',
             value: _frequencyLabel,
+          ),
+          _divider(),
+          _InfoRow(
+            icon: Icons.event_available_rounded,
+            iconColor: next != null
+                ? const Color(0xFF2D9E6B)
+                : AppColors.textSecondary,
+            label: 'Next Occurrence',
+            value: nextLabel,
           ),
           if (transaction.recurringEndDate != null) ...[
             _divider(),
