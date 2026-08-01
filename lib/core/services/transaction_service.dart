@@ -38,8 +38,24 @@ class TransactionService extends ChangeNotifier {
   /// Total expenses for the given month/year — only monthly transactions.
   double expensesForMonth(int year, int month) =>
       transactionsForMonth(year, month)
-          .where((t) => t.isExpense && !t.excludeFromExpense && t.isMonthly)
+          .where((t) => t.isExpense && t.isMonthly)
           .fold(0.0, (sum, t) => sum + t.amount);
+
+  /// Portion of monthly expenses that were charged to a credit card account.
+  /// This amount is included in [expensesForMonth] but has not yet been
+  /// deducted from any bank/wallet — it is outstanding on the credit card.
+  double creditCardExpensesForMonth(int year, int month) {
+    final creditCardIds = accountService.creditCards.map((a) => a.id).toSet();
+    return transactionsForMonth(year, month)
+        .where(
+          (t) =>
+              t.isExpense &&
+              t.isMonthly &&
+              t.accountId != null &&
+              creditCardIds.contains(t.accountId),
+        )
+        .fold(0.0, (sum, t) => sum + t.amount);
+  }
 
   /// Net balance (income - expenses) for the given month/year.
   double balanceForMonth(int year, int month) =>
@@ -67,9 +83,9 @@ class TransactionService extends ChangeNotifier {
     tagId,
   ).where((t) => t.isIncome).fold(0.0, (sum, t) => sum + t.amount);
 
-  double expensesForTag(String tagId) => transactionsWithTag(tagId)
-      .where((t) => t.isExpense && !t.excludeFromExpense)
-      .fold(0.0, (sum, t) => sum + t.amount);
+  double expensesForTag(String tagId) => transactionsWithTag(
+    tagId,
+  ).where((t) => t.isExpense).fold(0.0, (sum, t) => sum + t.amount);
 
   /// All recurring transaction templates (parent transactions).
   List<Transaction> getRecurringTemplates() {

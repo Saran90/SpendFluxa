@@ -3,18 +3,25 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/account.dart';
 import '../../core/services/account_service.dart';
+import '../../core/services/credit_card_bill_service.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
+import 'account_detail_screen.dart';
 import 'add_account_sheet.dart';
 
 class AccountsScreen extends StatelessWidget {
   final AccountService accountService;
   final CurrencyService currencyService;
+  final TransactionService transactionService;
+  final CreditCardBillService billService;
 
   const AccountsScreen({
     super.key,
     required this.accountService,
     required this.currencyService,
+    required this.transactionService,
+    required this.billService,
   });
 
   @override
@@ -74,7 +81,11 @@ class AccountsScreen extends StatelessWidget {
                                     (ctx, i) => _AccountCard(
                                       account: groups[type]![i],
                                       fmt: fmt,
-                                      onTap: () => _openSheet(
+                                      onTap: () => _openDetail(
+                                        context,
+                                        groups[type]![i],
+                                      ),
+                                      onEdit: () => _openSheet(
                                         context,
                                         editing: groups[type]![i],
                                       ),
@@ -259,6 +270,20 @@ class AccountsScreen extends StatelessWidget {
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
+  void _openDetail(BuildContext context, Account account) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AccountDetailScreen(
+          account: account,
+          accountService: accountService,
+          transactionService: transactionService,
+          currencyService: currencyService,
+          billService: billService,
+        ),
+      ),
+    );
+  }
+
   Future<void> _openSheet(BuildContext context, {Account? editing}) async {
     await showAddAccountSheet(context, accountService, editing: editing);
   }
@@ -312,6 +337,7 @@ class _AccountCard extends StatelessWidget {
   final Account account;
   final NumberFormat fmt;
   final VoidCallback onTap;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback onSetDefault;
 
@@ -319,6 +345,7 @@ class _AccountCard extends StatelessWidget {
     required this.account,
     required this.fmt,
     required this.onTap,
+    required this.onEdit,
     required this.onDelete,
     required this.onSetDefault,
   });
@@ -608,7 +635,7 @@ class _AccountCard extends StatelessWidget {
       onSelected: (value) {
         switch (value) {
           case 'edit':
-            onTap();
+            onEdit();
             break;
           case 'default':
             onSetDefault();

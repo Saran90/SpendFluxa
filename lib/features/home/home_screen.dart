@@ -19,6 +19,7 @@ import '../accounts/account_detail_screen.dart';
 import '../accounts/accounts_screen.dart';
 import '../analytics/analytics_screen.dart';
 import '../transactions/transaction_detail_screen.dart';
+import '../transactions/transactions_screen.dart';
 import '../transactions/recurring_transactions_screen.dart';
 import '../reminders/reminder_banner.dart';
 import '../reminders/recurring_confirmation_banner.dart';
@@ -61,10 +62,12 @@ class _HomeScreenState extends State<HomeScreen>
   late Animation<double> _fadeAnimation;
 
   final _now = DateTime.now();
+  late DateTime _selectedMonth;
 
   @override
   void initState() {
     super.initState();
+    _selectedMonth = DateTime(_now.year, _now.month);
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -106,22 +109,30 @@ class _HomeScreenState extends State<HomeScreen>
           builder: (context, _) {
             final fmt = widget.currencyService.formatter;
             final income = widget.transactionService.incomeForMonth(
-              _now.year,
-              _now.month,
+              _selectedMonth.year,
+              _selectedMonth.month,
             );
             final expenses = widget.transactionService.expensesForMonth(
-              _now.year,
-              _now.month,
+              _selectedMonth.year,
+              _selectedMonth.month,
             );
+            final creditCardExpenses = widget.transactionService
+                .creditCardExpensesForMonth(
+                  _selectedMonth.year,
+                  _selectedMonth.month,
+                );
             final balance = income - expenses;
-            final recent = widget.transactionService.recentTransactions(
-              limit: 6,
-            );
+            final allMonthTransactions = widget.transactionService
+                .transactionsForMonth(_selectedMonth.year, _selectedMonth.month)
+                .where((t) => !t.isRecurring)
+                .toList();
+            final monthTransactions = allMonthTransactions.take(10).toList();
+            final hasMoreTransactions = allMonthTransactions.length > 10;
             final recurringTemplates = widget.transactionService
                 .getRecurringTemplates();
             final currentBudget = widget.budgetService.budgetFor(
-              _now.year,
-              _now.month,
+              _selectedMonth.year,
+              _selectedMonth.month,
             );
 
             return CustomScrollView(
@@ -130,16 +141,29 @@ class _HomeScreenState extends State<HomeScreen>
               slivers: [
                 SliverToBoxAdapter(child: _buildHeader(balance, fmt)),
                 SliverToBoxAdapter(
-                  child: _buildSummaryRow(income, expenses, fmt),
+                  child: _buildSummaryRow(
+                    income,
+                    expenses,
+                    creditCardExpenses,
+                    fmt,
+                  ),
                 ),
                 SliverToBoxAdapter(
-                  child: _buildSpendingProgress(expenses, income),
+                  child: _buildSpendingProgress(
+                    expenses,
+                    income,
+                    creditCardExpenses,
+                    fmt,
+                  ),
                 ),
                 // Recurring transaction confirmation banner (for transactions due today)
                 SliverToBoxAdapter(
-                  child: RecurringConfirmationBanner(
-                    confirmationService: widget.recurringConfirmationService,
-                    transactionService: widget.transactionService,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: RecurringConfirmationBanner(
+                      confirmationService: widget.recurringConfirmationService,
+                      transactionService: widget.transactionService,
+                    ),
                   ),
                 ),
                 // Reminder banner (for upcoming transactions)
@@ -151,20 +175,37 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   ),
                 SliverToBoxAdapter(
-                  child: _buildSectionHeader('Recent Transactions', recent),
+                  child: _buildSectionHeader(
+                    'Transactions',
+                    monthTransactions,
+                    onSeeAll: hasMoreTransactions
+                        ? () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => TransactionsScreen(
+                                transactionService: widget.transactionService,
+                                currencyService: widget.currencyService,
+                                categoryService: widget.categoryService,
+                                accountService: widget.accountService,
+                                tagService: widget.tagService,
+                                initialMonth: _selectedMonth,
+                              ),
+                            ),
+                          )
+                        : null,
+                  ),
                 ),
-                if (recent.isEmpty)
+                if (monthTransactions.isEmpty)
                   SliverToBoxAdapter(child: _buildEmptyState())
                 else
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) => _buildTransactionTile(
-                        recent[index],
+                        monthTransactions[index],
                         index,
-                        recent.length,
+                        monthTransactions.length,
                         fmt,
                       ),
-                      childCount: recent.length,
+                      childCount: monthTransactions.length,
                     ),
                   ),
 
@@ -301,7 +342,8 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildHeader(double balance, NumberFormat fmt) {
     final user = widget.authService.currentUser;
     final firstName = user?.displayName.split(' ').first ?? 'there';
-    final monthLabel = DateFormat('MMMM yyyy').format(_now);
+    final isCurrentMonth =
+        _selectedMonth.year == _now.year && _selectedMonth.month == _now.month;
 
     return Container(
       decoration: const BoxDecoration(
@@ -322,26 +364,13 @@ class _HomeScreenState extends State<HomeScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hello, $firstName 👋',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        monthLabel,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.white.withValues(alpha: 0.75),
-                        ),
-                      ),
-                    ],
+                  Text(
+                    'Hello, $firstName 👋',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
                   ),
                   Row(
                     children: [
@@ -373,7 +402,67 @@ class _HomeScreenState extends State<HomeScreen>
                 ],
               ),
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 16),
+
+              // Month navigator row
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Prev month
+                  GestureDetector(
+                    onTap: _prevMonth,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.chevron_left_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: _pickMonth,
+                    child: Text(
+                      DateFormat('MMMM yyyy').format(_selectedMonth),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Next month — dimmed at current month
+                  GestureDetector(
+                    onTap: isCurrentMonth ? null : _nextMonth,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(
+                          alpha: isCurrentMonth ? 0.07 : 0.15,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        color: Colors.white.withValues(
+                          alpha: isCurrentMonth ? 0.35 : 1.0,
+                        ),
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
 
               // Balance
               Text(
@@ -530,14 +619,55 @@ class _HomeScreenState extends State<HomeScreen>
           transactionService: widget.transactionService,
           currencyService: widget.currencyService,
           categoryService: widget.categoryService,
+          accountService: widget.accountService,
+          tagService: widget.tagService,
         ),
       ),
     );
   }
 
+  // ── Month navigation ──────────────────────────────────────────────────────
+
+  void _prevMonth() {
+    setState(() {
+      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
+    });
+  }
+
+  void _nextMonth() {
+    final next = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+    if (next.isAfter(DateTime(_now.year, _now.month))) return;
+    setState(() => _selectedMonth = next);
+  }
+
+  Future<void> _pickMonth() async {
+    final months = List.generate(24, (i) {
+      return DateTime(_now.year, _now.month - i);
+    });
+
+    final picked = await showModalBottomSheet<DateTime>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) =>
+          _MonthPickerSheet(months: months, selected: _selectedMonth),
+    );
+
+    if (picked != null) {
+      setState(() => _selectedMonth = picked);
+    }
+  }
+
   // ── Income / Expense summary row ───────────────────────────────────────────
 
-  Widget _buildSummaryRow(double income, double expenses, NumberFormat fmt) {
+  Widget _buildSummaryRow(
+    double income,
+    double expenses,
+    double creditCardExpenses,
+    NumberFormat fmt,
+  ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       child: Row(
@@ -568,10 +698,16 @@ class _HomeScreenState extends State<HomeScreen>
 
   // ── Spending progress bar ─────────────────────────────────────────────────
 
-  Widget _buildSpendingProgress(double expenses, double income) {
+  Widget _buildSpendingProgress(
+    double expenses,
+    double income,
+    double creditCardExpenses,
+    NumberFormat fmt,
+  ) {
     final ratio = income > 0 ? (expenses / income).clamp(0.0, 1.0) : 0.0;
     final pct = (ratio * 100).toStringAsFixed(0);
     final isOver = expenses > income;
+    final cashExpenses = expenses - creditCardExpenses;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -648,6 +784,50 @@ class _HomeScreenState extends State<HomeScreen>
                 color: isOver ? AppColors.accent : AppColors.textSecondary,
               ),
             ),
+            // Credit card breakdown — only shown when there are CC expenses
+            if (creditCardExpenses > 0) ...[
+              const SizedBox(height: 10),
+              const Divider(height: 1, color: Color(0xFFF0F2F5)),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.credit_card_rounded,
+                    size: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: RichText(
+                      text: TextSpan(
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                        children: [
+                          TextSpan(
+                            text: fmt.format(cashExpenses),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const TextSpan(text: ' paid from account  ·  '),
+                          TextSpan(
+                            text: fmt.format(creditCardExpenses),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFE74C3C),
+                            ),
+                          ),
+                          const TextSpan(text: ' on credit'),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -1111,6 +1291,8 @@ class _HomeScreenState extends State<HomeScreen>
                     builder: (_) => AccountsScreen(
                       accountService: widget.accountService,
                       currencyService: widget.currencyService,
+                      transactionService: widget.transactionService,
+                      billService: widget.billService,
                     ),
                   ),
                 );
@@ -1378,11 +1560,8 @@ class _HomeScreenState extends State<HomeScreen>
     // Add category budgets
     for (final entry in budget.categoryLimits.entries) {
       final categoryExpenses = widget.transactionService
-          .transactionsForMonth(_now.year, _now.month)
-          .where(
-            (t) =>
-                t.isExpense && !t.excludeFromExpense && t.category == entry.key,
-          )
+          .transactionsForMonth(_selectedMonth.year, _selectedMonth.month)
+          .where((t) => t.isExpense && t.category == entry.key)
           .fold(0.0, (sum, t) => sum + t.amount);
 
       items.add(
@@ -1650,4 +1829,117 @@ class _BudgetItem {
     required this.icon,
     required this.color,
   });
+}
+
+// ── Month picker bottom sheet ─────────────────────────────────────────────────
+
+class _MonthPickerSheet extends StatelessWidget {
+  final List<DateTime> months;
+  final DateTime selected;
+
+  const _MonthPickerSheet({required this.months, required this.selected});
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Handle
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.textLight,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Select Month',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+        Flexible(
+          child: ListView.builder(
+            shrinkWrap: true,
+            padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding + 16),
+            itemCount: months.length,
+            itemBuilder: (_, i) {
+              final month = months[i];
+              final isSelected =
+                  month.year == selected.year && month.month == selected.month;
+              return InkWell(
+                onTap: () => Navigator.of(context).pop(month),
+                borderRadius: BorderRadius.circular(12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppColors.primary.withValues(alpha: 0.08)
+                        : AppColors.background,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? AppColors.primary
+                          : Colors.transparent,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        DateFormat('MMMM yyyy').format(month),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.textPrimary,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (isSelected)
+                        Container(
+                          width: 22,
+                          height: 22,
+                          decoration: const BoxDecoration(
+                            color: AppColors.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.check_rounded,
+                            color: Colors.white,
+                            size: 14,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }

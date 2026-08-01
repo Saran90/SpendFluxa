@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/transaction.dart';
+import '../../core/models/budget.dart';
 import '../../core/models/custom_category.dart';
 import '../../core/services/budget_service.dart';
 import '../../core/services/category_service.dart';
@@ -221,7 +222,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     // ── Category budgets header ─────────────────────────
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -251,6 +252,17 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         ),
                       ),
                     ),
+
+                    // ── Category limits total ───────────────────────────
+                    if (budget.categoryLimits.isNotEmpty ||
+                        budget.customCategoryLimits.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: _CategoryLimitsTotalBar(
+                          budget: budget,
+                          overallLimit: budget.overallLimit,
+                          fmt: fmt,
+                        ),
+                      ),
 
                     // ── Category rows ───────────────────────────────────
                     SliverList(
@@ -547,6 +559,116 @@ class _BudgetScreenState extends State<BudgetScreen> {
         );
       }
     }
+  }
+}
+
+// ── Category limits total bar ─────────────────────────────────────────────────
+
+class _CategoryLimitsTotalBar extends StatelessWidget {
+  final MonthlyBudget budget;
+  final double? overallLimit;
+  final NumberFormat fmt;
+
+  const _CategoryLimitsTotalBar({
+    required this.budget,
+    required this.overallLimit,
+    required this.fmt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Sum all set category limits (built-in + custom)
+    final totalAllocated =
+        budget.categoryLimits.values.fold<double>(
+          0.0,
+          (double s, double v) => s + v,
+        ) +
+        budget.customCategoryLimits.values.fold<double>(
+          0.0,
+          (double s, double v) => s + v,
+        );
+
+    final hasOverall = overallLimit != null && overallLimit! > 0;
+    final unallocated = hasOverall ? (overallLimit! - totalAllocated) : null;
+    final isOver = unallocated != null && unallocated < 0;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isOver
+                ? AppColors.accent.withValues(alpha: 0.4)
+                : AppColors.primary.withValues(alpha: 0.18),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.calculate_rounded,
+              size: 16,
+              color: isOver ? AppColors.accent : AppColors.primary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                  ),
+                  children: [
+                    const TextSpan(text: 'Total allocated  '),
+                    TextSpan(
+                      text: fmt.format(totalAllocated),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: isOver ? AppColors.accent : AppColors.primary,
+                      ),
+                    ),
+                    if (hasOverall) ...[
+                      TextSpan(
+                        text: '  of  ${fmt.format(overallLimit!)}',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            if (unallocated != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: isOver
+                      ? AppColors.accent.withValues(alpha: 0.1)
+                      : const Color(0xFF2D9E6B).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  isOver
+                      ? '${fmt.format(unallocated.abs())} over'
+                      : '${fmt.format(unallocated)} free',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isOver ? AppColors.accent : const Color(0xFF2D9E6B),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 

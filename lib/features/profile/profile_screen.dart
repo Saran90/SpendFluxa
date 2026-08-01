@@ -10,6 +10,7 @@ import '../../core/services/backup_service.dart';
 import '../../core/services/biometric_service.dart';
 import '../../core/services/budget_service.dart';
 import '../../core/services/category_service.dart';
+import '../../core/services/credit_card_bill_service.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
@@ -32,6 +33,7 @@ class ProfileScreen extends StatefulWidget {
   final AutoBackupService autoBackupService;
   final BudgetService budgetService;
   final BiometricService biometricService;
+  final CreditCardBillService billService;
   final ScrollController? scrollController;
 
   const ProfileScreen({
@@ -46,6 +48,7 @@ class ProfileScreen extends StatefulWidget {
     required this.autoBackupService,
     required this.budgetService,
     required this.biometricService,
+    required this.billService,
     this.scrollController,
   });
 
@@ -65,6 +68,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   AutoBackupService get autoBackupService => widget.autoBackupService;
   BudgetService get budgetService => widget.budgetService;
   BiometricService get biometricService => widget.biometricService;
+  CreditCardBillService get billService => widget.billService;
   ScrollController? get scrollController => widget.scrollController;
 
   String _appVersion = '';
@@ -229,6 +233,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           builder: (_) => AccountsScreen(
                             accountService: accountService,
                             currencyService: currencyService,
+                            transactionService: transactionService,
+                            billService: billService,
                           ),
                         ),
                       ),

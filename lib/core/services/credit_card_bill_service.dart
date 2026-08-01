@@ -183,7 +183,9 @@ class CreditCardBillService extends ChangeNotifier {
     // Case 1: Bill amount is LESS than or EQUAL to outstanding
     // We pay the bill amount, leaving the remaining as outstanding
     if (bill.billAmount <= currentOutstanding) {
-      // Always create bill payment transaction as expense + monthly
+      // The individual CC expense transactions were already recorded in the
+      // month they were spent, so the bill payment itself must NOT count again
+      // as an expense — it is purely a cash-flow settlement.
       final billPaymentTxn = Transaction(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: 'Bill Payment - ${creditCardAccount.name}',
@@ -191,19 +193,24 @@ class CreditCardBillService extends ChangeNotifier {
         type: TransactionType.expense,
         category: TransactionCategory.bills,
         date: DateTime.now(),
-        accountId: fromAccountId, // Expense from bank account
+        accountId: fromAccountId, // Cash leaves the bank account
         note:
             'Credit card bill payment for ${DateFormat('MMMM yyyy').format(bill.billDate)}',
-        excludeFromExpense: false, // Include in monthly expense
-        isMonthly: true,
+        // Exclude from expense totals: the spending was already counted in the
+        // month the credit card transactions were made.
+        excludeFromExpense: true,
+        isMonthly: false,
       );
       await transactionService.addTransaction(billPaymentTxn);
 
       // Reduce credit card outstanding by bill amount
       await accountService.adjustBalance(bill.accountId, -bill.billAmount);
     } else {
-      // Case 2: Bill amount is MORE than outstanding
-      // Create expense transaction for full bill amount
+      // Case 2: Bill amount is MORE than outstanding (e.g. advance payment or
+      // the bill includes charges not yet individually recorded).
+      // Only the portion that exceeds already-recorded expenses is a new expense.
+      // For simplicity we still exclude the full payment from expense totals —
+      // the user should have recorded any missing CC transactions separately.
       final billPaymentTxn = Transaction(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: 'Bill Payment - ${creditCardAccount.name}',
@@ -211,11 +218,11 @@ class CreditCardBillService extends ChangeNotifier {
         type: TransactionType.expense,
         category: TransactionCategory.bills,
         date: DateTime.now(),
-        accountId: fromAccountId, // Expense from bank account
+        accountId: fromAccountId, // Cash leaves the bank account
         note:
             'Credit card bill payment for ${DateFormat('MMMM yyyy').format(bill.billDate)}',
-        excludeFromExpense: false, // Include in monthly expense
-        isMonthly: true,
+        excludeFromExpense: true,
+        isMonthly: false,
       );
       await transactionService.addTransaction(billPaymentTxn);
 

@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/transaction.dart';
+import '../../core/services/account_service.dart';
 import '../../core/services/category_service.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/services/tag_service.dart';
 import '../../core/services/transaction_service.dart';
 import '../../core/theme/app_colors.dart';
+import 'category_transactions_screen.dart';
 
 /// Stable key for grouping: custom categories use their id, built-ins use enum name.
 class _CategoryKey {
@@ -16,8 +19,7 @@ class _CategoryKey {
   const _CategoryKey({required this.key, required this.resolved});
 
   @override
-  bool operator ==(Object other) =>
-      other is _CategoryKey && other.key == key;
+  bool operator ==(Object other) => other is _CategoryKey && other.key == key;
 
   @override
   int get hashCode => key.hashCode;
@@ -27,6 +29,8 @@ class AnalyticsScreen extends StatefulWidget {
   final TransactionService transactionService;
   final CurrencyService currencyService;
   final CategoryService categoryService;
+  final AccountService accountService;
+  final TagService tagService;
   final ScrollController? scrollController;
 
   const AnalyticsScreen({
@@ -34,6 +38,8 @@ class AnalyticsScreen extends StatefulWidget {
     required this.transactionService,
     required this.currencyService,
     required this.categoryService,
+    required this.accountService,
+    required this.tagService,
     this.scrollController,
   });
 
@@ -44,6 +50,8 @@ class AnalyticsScreen extends StatefulWidget {
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
   late DateTime _selectedMonth;
   int? _tappedSlice; // index of the tapped pie slice
+  bool _includeGeneral =
+      false; // when true, general (non-monthly) expenses are included
 
   @override
   void initState() {
@@ -92,7 +100,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           final fmt = widget.currencyService.formatter;
           final expenses = widget.transactionService
               .transactionsForMonth(_selectedMonth.year, _selectedMonth.month)
-              .where((t) => t.isExpense)
+              .where((t) => t.isExpense && (_includeGeneral || t.isMonthly))
               .toList();
 
           // Group by resolved category (custom categories get their own bucket)
@@ -199,6 +207,48 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 : AppColors.textPrimary,
                           ),
                           onPressed: _isCurrentMonth ? null : _nextMonth,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── Expense scope toggle ──────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: Container(
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(3),
+                    child: Row(
+                      children: [
+                        _ScopeTab(
+                          label: 'Monthly only',
+                          active: !_includeGeneral,
+                          onTap: () => setState(() {
+                            _includeGeneral = false;
+                            _tappedSlice = null;
+                          }),
+                        ),
+                        _ScopeTab(
+                          label: 'Include general',
+                          active: _includeGeneral,
+                          onTap: () => setState(() {
+                            _includeGeneral = true;
+                            _tappedSlice = null;
+                          }),
                         ),
                       ],
                     ),
@@ -320,83 +370,97 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         opacity: isHighlighted ? 1.0 : 0.35,
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.04),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: cat.color.withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(12),
+                          child: GestureDetector(
+                            onTap: () =>
+                                _openCategoryTransactions(context, entry.key),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.04),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 40,
+                                        height: 40,
+                                        decoration: BoxDecoration(
+                                          color: cat.color.withValues(
+                                            alpha: 0.12,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          cat.icon,
+                                          color: cat.color,
+                                          size: 20,
+                                        ),
                                       ),
-                                      child: Icon(
-                                        cat.icon,
-                                        color: cat.color,
-                                        size: 20,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          cat.label,
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        cat.label,
+                                      Text(
+                                        fmt.format(entry.value),
                                         style: const TextStyle(
                                           fontSize: 14,
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.w700,
                                           color: AppColors.textPrimary,
                                         ),
                                       ),
-                                    ),
-                                    Text(
-                                      fmt.format(entry.value),
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    SizedBox(
-                                      width: 40,
-                                      child: Text(
-                                        '${(pct * 100).toStringAsFixed(0)}%',
-                                        textAlign: TextAlign.right,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: cat.color,
+                                      const SizedBox(width: 8),
+                                      SizedBox(
+                                        width: 40,
+                                        child: Text(
+                                          '${(pct * 100).toStringAsFixed(0)}%',
+                                          textAlign: TextAlign.right,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: cat.color,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: LinearProgressIndicator(
-                                    value: pct,
-                                    minHeight: 6,
-                                    backgroundColor: AppColors.background,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      cat.color,
+                                      const SizedBox(width: 4),
+                                      Icon(
+                                        Icons.chevron_right_rounded,
+                                        size: 18,
+                                        color: AppColors.textLight,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: pct,
+                                      minHeight: 6,
+                                      backgroundColor: AppColors.background,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        cat.color,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -408,6 +472,26 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  // ── Category transactions drill-down ─────────────────────────────────────
+
+  void _openCategoryTransactions(BuildContext context, _CategoryKey catKey) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CategoryTransactionsScreen(
+          categoryKey: catKey.key,
+          resolved: catKey.resolved,
+          month: _selectedMonth,
+          includeGeneral: _includeGeneral,
+          transactionService: widget.transactionService,
+          categoryService: widget.categoryService,
+          currencyService: widget.currencyService,
+          accountService: widget.accountService,
+          tagService: widget.tagService,
+        ),
       ),
     );
   }
@@ -434,6 +518,45 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     if (picked != null) {
       setState(() => _selectedMonth = picked);
     }
+  }
+}
+
+// ── Scope toggle tab ──────────────────────────────────────────────────────────
+
+class _ScopeTab extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _ScopeTab({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: active ? AppColors.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: active ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -541,8 +664,7 @@ class _PieChartCard extends StatelessWidget {
                       if (angle < 0) angle += 2 * math.pi;
                       double cumulative = 0;
                       for (int i = 0; i < display.length; i++) {
-                        final sweep =
-                            (display[i].value / total) * 2 * math.pi;
+                        final sweep = (display[i].value / total) * 2 * math.pi;
                         if (angle <= cumulative + sweep) {
                           onSliceTap(i);
                           return;
@@ -754,16 +876,30 @@ class _PieChartPainter extends CustomPainter {
         ..style = PaintingStyle.fill;
 
       final path = Path()
-        ..moveTo(centre.dx + innerR * math.cos(startAngle),
-            centre.dy + innerR * math.sin(startAngle))
-        ..lineTo(centre.dx + outerR * math.cos(startAngle),
-            centre.dy + outerR * math.sin(startAngle))
-        ..arcTo(Rect.fromCircle(center: centre, radius: outerR),
-            startAngle, sweep, false)
-        ..lineTo(centre.dx + innerR * math.cos(startAngle + sweep),
-            centre.dy + innerR * math.sin(startAngle + sweep))
-        ..arcTo(Rect.fromCircle(center: centre, radius: innerR),
-            startAngle + sweep, -sweep, false)
+        ..moveTo(
+          centre.dx + innerR * math.cos(startAngle),
+          centre.dy + innerR * math.sin(startAngle),
+        )
+        ..lineTo(
+          centre.dx + outerR * math.cos(startAngle),
+          centre.dy + outerR * math.sin(startAngle),
+        )
+        ..arcTo(
+          Rect.fromCircle(center: centre, radius: outerR),
+          startAngle,
+          sweep,
+          false,
+        )
+        ..lineTo(
+          centre.dx + innerR * math.cos(startAngle + sweep),
+          centre.dy + innerR * math.sin(startAngle + sweep),
+        )
+        ..arcTo(
+          Rect.fromCircle(center: centre, radius: innerR),
+          startAngle + sweep,
+          -sweep,
+          false,
+        )
         ..close();
 
       canvas.drawPath(path, fillPaint);

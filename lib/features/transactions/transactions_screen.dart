@@ -17,6 +17,7 @@ class TransactionsScreen extends StatefulWidget {
   final AccountService accountService;
   final TagService tagService;
   final ScrollController? scrollController;
+  final DateTime? initialMonth;
 
   const TransactionsScreen({
     super.key,
@@ -26,6 +27,7 @@ class TransactionsScreen extends StatefulWidget {
     required this.accountService,
     required this.tagService,
     this.scrollController,
+    this.initialMonth,
   });
 
   @override
@@ -43,7 +45,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+    _selectedMonth = widget.initialMonth != null
+        ? DateTime(widget.initialMonth!.year, widget.initialMonth!.month)
+        : DateTime(DateTime.now().year, DateTime.now().month);
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -144,17 +148,23 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             _year,
             _month,
           );
+          final creditCardExpenses = widget.transactionService
+              .creditCardExpensesForMonth(_year, _month);
           final categories = allTxs.map((t) => t.category).toSet().toList()
             ..sort((a, b) => a.label.compareTo(b.label));
           final q = _searchQuery.trim().toLowerCase();
           final txs = allTxs.where((t) {
-            if (_selectedCategory != null && t.category != _selectedCategory) return false;
+            if (_selectedCategory != null && t.category != _selectedCategory)
+              return false;
             if (q.isNotEmpty) {
               return t.title.toLowerCase().contains(q) ||
                   t.category.label.toLowerCase().contains(q) ||
                   (t.note?.toLowerCase().contains(q) ?? false) ||
                   t.amount.toString().contains(q) ||
-                  fmt.format(t.amount).replaceAll(RegExp(r'[^0-9.]'), '').contains(q);
+                  fmt
+                      .format(t.amount)
+                      .replaceAll(RegExp(r'[^0-9.]'), '')
+                      .contains(q);
             }
             return true;
           }).toList();
@@ -167,8 +177,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               _buildHeader(),
               _buildMonthSelector(),
               if (_searchVisible) _buildSearchBar(),
-              if (!_searchVisible) _buildSummaryCard(income, expenses, fmt),
-              if (!_searchVisible && categories.isNotEmpty) _buildCategoryFilter(categories),
+              if (!_searchVisible)
+                _buildSummaryCard(income, expenses, creditCardExpenses, fmt),
+              if (!_searchVisible && categories.isNotEmpty)
+                _buildCategoryFilter(categories),
               Expanded(
                 child: txs.isEmpty
                     ? _buildEmptyState()
@@ -292,7 +304,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 icon: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
                   child: Icon(
-                    _searchVisible ? Icons.search_off_rounded : Icons.search_rounded,
+                    _searchVisible
+                        ? Icons.search_off_rounded
+                        : Icons.search_rounded,
                     key: ValueKey(_searchVisible),
                     color: Colors.white,
                     size: 24,
@@ -327,7 +341,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         child: Row(
           children: [
             const SizedBox(width: 14),
-            const Icon(Icons.search_rounded, size: 20, color: AppColors.textSecondary),
+            const Icon(
+              Icons.search_rounded,
+              size: 20,
+              color: AppColors.textSecondary,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: TextField(
@@ -339,7 +357,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
                 decoration: const InputDecoration(
                   hintText: 'Search transactions...',
-                  hintStyle: TextStyle(fontSize: 15, color: AppColors.textLight),
+                  hintStyle: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.textLight,
+                  ),
                   border: InputBorder.none,
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
@@ -349,7 +370,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             ),
             if (_searchQuery.isNotEmpty)
               IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textSecondary),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: AppColors.textSecondary,
+                ),
                 onPressed: () => setState(() {
                   _searchQuery = '';
                   _searchController.clear();
@@ -416,9 +441,15 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   // ── Summary card ──────────────────────────────────────────────────────────
 
-  Widget _buildSummaryCard(double income, double expenses, NumberFormat fmt) {
+  Widget _buildSummaryCard(
+    double income,
+    double expenses,
+    double creditCardExpenses,
+    NumberFormat fmt,
+  ) {
     final net = income - expenses;
     final isDeficit = net < 0;
+    final cashExpenses = expenses - creditCardExpenses;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
@@ -435,38 +466,94 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             ),
           ],
         ),
-        child: Row(
+        child: Column(
           children: [
-            Expanded(
-              child: _statItem(
-                'Income',
-                fmt.format(income),
-                const Color(0xFF2D9E6B),
-                Icons.arrow_downward_rounded,
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: _statItem(
+                    'Income',
+                    fmt.format(income),
+                    const Color(0xFF2D9E6B),
+                    Icons.arrow_downward_rounded,
+                  ),
+                ),
+                Container(width: 1, height: 40, color: const Color(0xFFEEF0F3)),
+                Expanded(
+                  child: _statItem(
+                    'Expenses',
+                    fmt.format(expenses),
+                    AppColors.accent,
+                    Icons.arrow_upward_rounded,
+                    align: TextAlign.center,
+                  ),
+                ),
+                Container(width: 1, height: 40, color: const Color(0xFFEEF0F3)),
+                Expanded(
+                  child: _statItem(
+                    'Net',
+                    fmt.format(net.abs()),
+                    isDeficit ? AppColors.accent : const Color(0xFF2D9E6B),
+                    isDeficit
+                        ? Icons.trending_down_rounded
+                        : Icons.trending_up_rounded,
+                    align: TextAlign.right,
+                  ),
+                ),
+              ],
             ),
-            Container(width: 1, height: 40, color: const Color(0xFFEEF0F3)),
-            Expanded(
-              child: _statItem(
-                'Expenses',
-                fmt.format(expenses),
-                AppColors.accent,
-                Icons.arrow_upward_rounded,
-                align: TextAlign.center,
+            // Credit card breakdown — only when CC expenses exist
+            if (creditCardExpenses > 0) ...[
+              const SizedBox(height: 12),
+              const Divider(
+                height: 1,
+                indent: 12,
+                endIndent: 12,
+                color: Color(0xFFEEF0F3),
               ),
-            ),
-            Container(width: 1, height: 40, color: const Color(0xFFEEF0F3)),
-            Expanded(
-              child: _statItem(
-                'Net',
-                fmt.format(net.abs()),
-                isDeficit ? AppColors.accent : const Color(0xFF2D9E6B),
-                isDeficit
-                    ? Icons.trending_down_rounded
-                    : Icons.trending_up_rounded,
-                align: TextAlign.right,
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.credit_card_rounded,
+                      size: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: RichText(
+                        text: TextSpan(
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: fmt.format(cashExpenses),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const TextSpan(text: ' paid from account  ·  '),
+                            TextSpan(
+                              text: fmt.format(creditCardExpenses),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFE74C3C),
+                              ),
+                            ),
+                            const TextSpan(text: ' on credit'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -560,9 +647,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           final cat = categories[i];
           final selected = _selectedCategory == cat;
           return GestureDetector(
-            onTap: () => setState(
-              () => _selectedCategory = selected ? null : cat,
-            ),
+            onTap: () =>
+                setState(() => _selectedCategory = selected ? null : cat),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -605,7 +691,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     } else if (_selectedCategory != null) {
       message = 'No "${_selectedCategory!.label}" transactions this month';
     } else {
-      message = 'Nothing recorded for ${DateFormat('MMMM yyyy').format(_selectedMonth)}';
+      message =
+          'Nothing recorded for ${DateFormat('MMMM yyyy').format(_selectedMonth)}';
     }
 
     return Center(
@@ -613,7 +700,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            _searchQuery.trim().isNotEmpty ? Icons.search_off_rounded : Icons.receipt_long_rounded,
+            _searchQuery.trim().isNotEmpty
+                ? Icons.search_off_rounded
+                : Icons.receipt_long_rounded,
             size: 56,
             color: AppColors.textLight,
           ),
@@ -688,11 +777,7 @@ class _TransactionTile extends StatelessWidget {
                   color: cat.color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(
-                  cat.icon,
-                  color: cat.color,
-                  size: 22,
-                ),
+                child: Icon(cat.icon, color: cat.color, size: 22),
               ),
               const SizedBox(width: 14),
 

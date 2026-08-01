@@ -19,7 +19,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _dbName = 'spendflux.db';
-  static const _dbVersion = 9;
+  static const _dbVersion = 10;
 
   Database? _db;
   bool _schemaValidated = false;
@@ -243,6 +243,35 @@ class AppDatabase {
       } catch (_) {
         // Column already exists — safe to ignore
       }
+    }
+    if (oldVersion < 10) {
+      // Fix legacy credit card expense transactions that were incorrectly saved
+      // with exclude_from_expense = 1.
+      //
+      // Before the fix in add_transaction_screen.dart, ANY new expense on a
+      // credit card account was stored with exclude_from_expense = 1, which
+      // caused them to be invisible in analytics and all expense totals.
+      //
+      // We restore them by clearing the flag for:
+      //   • real expense transactions (type = 'expense')
+      //   • whose account is a credit card (join on accounts.type)
+      //   • that are NOT EMI records (is_emi = 0)
+      //   • that are NOT EMI instalment children (parent_transaction_id IS NULL)
+      //   • that are NOT bill-payment transactions (title NOT LIKE 'Bill Payment%')
+      //
+      // EMI rows and bill payments were intentionally excluded and must stay that way.
+      await db.execute('''
+        UPDATE transactions
+        SET exclude_from_expense = 0
+        WHERE type = 'expense'
+          AND is_emi = 0
+          AND parent_transaction_id IS NULL
+          AND (title NOT LIKE 'Bill Payment%')
+          AND exclude_from_expense = 1
+          AND account_id IN (
+            SELECT id FROM accounts WHERE type = 'creditCard'
+          )
+      ''');
     }
   }
 

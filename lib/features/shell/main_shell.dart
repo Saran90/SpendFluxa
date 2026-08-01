@@ -128,10 +128,10 @@ class _MainShellState extends State<MainShell>
       // Also pick up any worker status update from the background.
       _checkWorkerStatus();
 
-    // While the app is in the foreground, poll the worker status every
-    // 30s so the backup dialog appears the moment the scheduled time
-    // arrives (the user may be looking at the app when the worker fires).
-    _startForegroundStatusPolling();
+      // While the app is in the foreground, poll the worker status every
+      // 30s so the backup dialog appears the moment the scheduled time
+      // arrives (the user may be looking at the app when the worker fires).
+      _startForegroundStatusPolling();
     }
   }
 
@@ -302,11 +302,7 @@ class _MainShellState extends State<MainShell>
                     size: 18,
                   ),
                   SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Auto-backup completed successfully',
-                    ),
-                  ),
+                  Expanded(child: Text('Auto-backup completed successfully')),
                 ],
               ),
               backgroundColor: const Color(0xFF2D9E6B),
@@ -372,92 +368,85 @@ class _MainShellState extends State<MainShell>
   /// terminal state, it surfaces the success/error snackbar.
   void _startForegroundStatusPolling() {
     _foregroundPollingTimer?.cancel();
-    _foregroundPollingTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (timer) async {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-        await _checkWorkerStatus();
-      },
-    );
+    _foregroundPollingTimer = Timer.periodic(const Duration(seconds: 30), (
+      timer,
+    ) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      await _checkWorkerStatus();
+    });
   }
 
   void _startWorkerStatusPolling() {
     _workerStatusTimer?.cancel();
-    _workerStatusTimer = Timer.periodic(
-      const Duration(seconds: 2),
-      (timer) async {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-        final status =
-            await widget.autoBackupService.refreshWorkerStatus();
-        if (status == AutoBackupStatus.running) {
-          return; // still running
-        }
-        // Worker finished — stop polling, close dialog, show result.
+    _workerStatusTimer = Timer.periodic(const Duration(seconds: 2), (
+      timer,
+    ) async {
+      if (!mounted) {
         timer.cancel();
-        _workerStatusTimer = null;
+        return;
+      }
+      final status = await widget.autoBackupService.refreshWorkerStatus();
+      if (status == AutoBackupStatus.running) {
+        return; // still running
+      }
+      // Worker finished — stop polling, close dialog, show result.
+      timer.cancel();
+      _workerStatusTimer = null;
+      if (mounted) {
+        // Dismiss whichever dialog is on top (the progress one).
+        try {
+          Navigator.of(context, rootNavigator: true).pop();
+        } catch (_) {}
+      }
+      if (status == AutoBackupStatus.success) {
+        await widget.autoBackupService.clearWorkerStatus();
         if (mounted) {
-          // Dismiss whichever dialog is on top (the progress one).
-          try {
-            Navigator.of(context, rootNavigator: true).pop();
-          } catch (_) {}
-        }
-        if (status == AutoBackupStatus.success) {
-          await widget.autoBackupService.clearWorkerStatus();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Row(
-                  children: [
-                    Icon(
-                      Icons.check_circle_rounded,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text('Auto-backup completed successfully'),
-                    ),
-                  ],
-                ),
-                backgroundColor: const Color(0xFF2D9E6B),
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                duration: const Duration(seconds: 3),
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(child: Text('Auto-backup completed successfully')),
+                ],
               ),
-            );
-          }
-        } else if (status == AutoBackupStatus.failed) {
-          final err =
-              widget.autoBackupService.workerError ?? 'Unknown error';
-          await widget.autoBackupService.clearWorkerStatus();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Auto-backup failed: $err'),
-                backgroundColor: Colors.red.shade600,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                duration: const Duration(seconds: 4),
+              backgroundColor: const Color(0xFF2D9E6B),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-            );
-          }
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              duration: const Duration(seconds: 3),
+            ),
+          );
         }
-      },
-    );
+      } else if (status == AutoBackupStatus.failed) {
+        final err = widget.autoBackupService.workerError ?? 'Unknown error';
+        await widget.autoBackupService.clearWorkerStatus();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Auto-backup failed: $err'),
+              backgroundColor: Colors.red.shade600,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    });
   }
-
 
   Future<void> _checkAndShowOnboarding() async {
     // Wait for the first frame to render
@@ -570,6 +559,7 @@ class _MainShellState extends State<MainShell>
               autoBackupService: widget.autoBackupService,
               budgetService: widget.budgetService,
               biometricService: widget.biometricService,
+              billService: widget.billService,
               scrollController: _scrollControllers[3],
             ),
             3,

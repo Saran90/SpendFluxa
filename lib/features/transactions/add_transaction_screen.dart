@@ -412,10 +412,6 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
           ),
         );
       } else {
-        // Check if using credit card account
-        final isCreditCardTransaction =
-            _fromAccount?.type == AccountType.creditCard;
-
         await widget.transactionService.addTransaction(
           Transaction(
             id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -432,11 +428,10 @@ class _AddTransactionScreenState extends State<AddTransactionScreen>
                 ? _toAccount?.id
                 : null,
             tagIds: _selectedTagIds,
-            // Credit card transactions are excluded from expense totals but are monthly
-            excludeFromExpense: isCreditCardTransaction
-                ? true
-                : _excludeFromExpense,
-            isMonthly: isCreditCardTransaction ? true : _isMonthly,
+            // Credit card transactions count toward the month they were made.
+            // Bill payments (recorded separately) handle the actual cash outflow.
+            excludeFromExpense: _excludeFromExpense,
+            isMonthly: _isMonthly,
             customCategoryId: _selectedCustomCategory?.id,
           ),
         );

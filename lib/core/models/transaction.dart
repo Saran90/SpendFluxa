@@ -315,7 +315,10 @@ class Transaction {
     this.customCategoryId,
   });
 
-  bool get isExpense => type == TransactionType.expense;
+  /// True only when this is a real expense that counts toward spending totals.
+  /// Transactions with [excludeFromExpense] set are treated as non-expenses
+  /// everywhere (analytics, home summary, budget, etc.).
+  bool get isExpense => type == TransactionType.expense && !excludeFromExpense;
   bool get isIncome => type == TransactionType.income;
   bool get isTransfer => type == TransactionType.transfer;
 
