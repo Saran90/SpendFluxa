@@ -4,8 +4,13 @@ import 'package:workmanager/workmanager.dart';
 
 import 'auto_backup_service.dart';
 import 'backup_service.dart';
+import '../../features/assistant/alert_worker.dart';
 
 /// Top-level entry point for the WorkManager background isolate.
+///
+/// Handles all background tasks registered by the app:
+/// - [AutoBackupService.backgroundTaskName] → auto-backup to Google Drive
+/// - `flux_ai_alert_evaluation` → daily Flux AI proactive alert evaluation
 ///
 /// Must be a top-level / static function annotated with
 /// `@pragma('vm:entry-point')` so AOT-compiled release builds keep it in
@@ -13,6 +18,12 @@ import 'backup_service.dart';
 @pragma('vm:entry-point')
 void autoBackupDispatcher() {
   Workmanager().executeTask((task, inputData) async {
+    // ── Alert evaluation ────────────────────────────────────────────────────
+    if (task == 'flux_ai_alert_evaluation') {
+      return runAlertEvaluationTask();
+    }
+
+    // ── Auto-backup ─────────────────────────────────────────────────────────
     if (task != AutoBackupService.backgroundTaskName) {
       return true; // Unknown task — let WorkManager reschedule/retry.
     }
@@ -44,9 +55,7 @@ void autoBackupDispatcher() {
         return true;
       }
 
-      // 4. Skip if the scheduled time hasn't passed yet.  (The OS may
-      //    fire our periodic work slightly early due to doze / battery
-      //    optimisation — respect the user's chosen time.)
+      // 4. Skip if the scheduled time hasn't passed yet.
       final hour = prefs.getInt(AutoBackupService.prefKeyHour) ?? 2;
       final minute = prefs.getInt(AutoBackupService.prefKeyMinute) ?? 0;
       final now = DateTime.now();
@@ -59,9 +68,7 @@ void autoBackupDispatcher() {
         return true;
       }
 
-      // 5. Get a fresh Drive access token.  We don't keep a long-lived
-      //    GoogleSignInAccount in the background isolate — instead the
-      //    foreground sign-in flow caches a token + expiry in prefs.
+      // 5. Get a fresh Drive access token.
       final token = await _getValidAccessToken(prefs);
       if (token == null) {
         await _writeStatus(
@@ -69,19 +76,13 @@ void autoBackupDispatcher() {
           status: AutoBackupStatus.failed,
           error: 'No valid Drive access token available.',
         );
-        return false; // Retry later when the user has opened the app again.
+        return false;
       }
 
-      // 6. Signal that the worker has started so the UI can show a loader.
-      await _writeStatus(
-        prefs,
-        status: AutoBackupStatus.running,
-        error: null,
-      );
+      // 6. Signal that the worker has started.
+      await _writeStatus(prefs, status: AutoBackupStatus.running, error: null);
 
-      // 7. Run the actual upload using the cached token.  Use a *fresh*
-      //    BackupService instance to avoid touching any UI-bound state
-      //    on the main isolate.
+      // 7. Run the actual upload.
       final service = BackupService();
       final result = await service.overwriteBackupWithToken(
         accessToken: token,
@@ -90,22 +91,20 @@ void autoBackupDispatcher() {
 
       if (result.success) {
         if (result.fileId != null && result.fileId != targetId) {
-          // Fallback created a brand-new file — persist the new id.
           await prefs.setString(
             AutoBackupService.prefKeyTargetId,
             result.fileId!,
           );
         }
-        await prefs.setString(
-          AutoBackupService.prefKeyLastDate,
-          today,
-        );
+        await prefs.setString(AutoBackupService.prefKeyLastDate, today);
         await _writeStatus(
           prefs,
           status: AutoBackupStatus.success,
           error: null,
         );
-        debugPrint('[AutoBackupWorker] Backup completed (id=${result.fileId}).');
+        debugPrint(
+          '[AutoBackupWorker] Backup completed (id=${result.fileId}).',
+        );
         return true;
       } else {
         await _writeStatus(
@@ -113,10 +112,8 @@ void autoBackupDispatcher() {
           status: AutoBackupStatus.failed,
           error: result.error,
         );
-        debugPrint(
-          '[AutoBackupWorker] Backup failed: ${result.error}',
-        );
-        return false; // Tell WorkManager to retry.
+        debugPrint('[AutoBackupWorker] Backup failed: ${result.error}');
+        return false;
       }
     } catch (e, st) {
       debugPrint('[AutoBackupWorker] Unexpected error: $e\n$st');
@@ -133,10 +130,6 @@ void autoBackupDispatcher() {
   });
 }
 
-/// Returns a non-expired access token from prefs, or null if none is
-/// available. We don't refresh tokens in the background — the user must
-/// open the app for that.  If the token is expired we wipe it so the
-/// foreground refresh flow is forced.
 Future<String?> _getValidAccessToken(SharedPreferences prefs) async {
   final token = prefs.getString(AutoBackupService.prefKeyAccessToken);
   final expiryStr = prefs.getString(AutoBackupService.prefKeyTokenExpiry);
@@ -144,7 +137,6 @@ Future<String?> _getValidAccessToken(SharedPreferences prefs) async {
   if (expiryStr != null) {
     final expiry = DateTime.tryParse(expiryStr);
     if (expiry != null && expiry.isBefore(DateTime.now().toUtc())) {
-      // Expired — drop it so the foreground flow refreshes on next launch.
       await prefs.remove(AutoBackupService.prefKeyAccessToken);
       await prefs.remove(AutoBackupService.prefKeyTokenExpiry);
       return null;
@@ -158,10 +150,7 @@ Future<void> _writeStatus(
   required AutoBackupStatus status,
   String? error,
 }) async {
-  await prefs.setString(
-    AutoBackupService.prefKeyWorkerStatus,
-    status.name,
-  );
+  await prefs.setString(AutoBackupService.prefKeyWorkerStatus, status.name);
   await prefs.setString(
     AutoBackupService.prefKeyWorkerStatusTime,
     DateTime.now().toIso8601String(),

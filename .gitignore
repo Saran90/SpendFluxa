@@ -63,3 +63,7 @@ test_*.dart
 *_GUIDE.md
 *_FIX.md
 CREDIT_CARD_SMS_TRACKING.md
+
+# Gemma model binary — too large for git, obtain separately (see android/model_delivery/src/main/assets/model/README.md)
+android/model_delivery/src/main/assets/model/*.task
+android/model_delivery/src/main/assets/model/*.bin

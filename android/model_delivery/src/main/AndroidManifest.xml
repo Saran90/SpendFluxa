@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:dist="http://schemas.android.com/apk/distribution"
+    package="com.yuklore.spendflux">
+
+    <dist:module dist:type="asset-pack">
+        <dist:delivery>
+            <!--
+                install-time: the model is bundled with the app install.
+                Switch to on-demand if/when moving to a larger model in
+                the future to keep the base APK small.
+            -->
+            <dist:install-time />
+        </dist:delivery>
+        <dist:fusing dist:include="true" />
+    </dist:module>
+
+</manifest>

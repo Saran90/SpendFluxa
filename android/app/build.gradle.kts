@@ -41,9 +41,12 @@ android {
         }
     }
 
+    // Declare the model asset pack as a dynamic feature.
+    dynamicFeatures += setOf(":model_delivery")
+
     defaultConfig {
         applicationId = "com.yuklore.spendflux"
-        minSdk = 26  // Required for core library desugaring with notifications
+        minSdk = 29  // Flux AI / MediaPipe LLM minimum
         targetSdk = flutter.targetSdkVersion
 
         // ── App version ────────────────────────────────────────────────
@@ -75,4 +78,8 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation("com.google.mediapipe:tasks-genai:0.10.27")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // Play Asset Delivery — provides AssetPackManager for model delivery.
+    implementation("com.google.android.play:asset-delivery:2.2.2")
 }

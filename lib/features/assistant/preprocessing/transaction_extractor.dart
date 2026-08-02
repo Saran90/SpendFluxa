@@ -113,7 +113,7 @@ class TransactionExtractor {
     var needsClarification = false;
     String? clarification;
 
-    if (amountResult.amount == null || amountResult.confidence < 0.9) {
+    if (amountResult.amount == null || amountResult.confidence < 0.7) {
       needsClarification = true;
       clarification = 'How much was the transaction amount?';
     } else if (type == null) {

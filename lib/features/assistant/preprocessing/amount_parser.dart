@@ -1,5 +1,3 @@
-import 'dart:math';
-
 /// Parses currency amounts from natural language (INR).
 class AmountParser {
   static final RegExp _currencyPattern = RegExp(

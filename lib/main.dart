@@ -18,6 +18,7 @@ import 'core/services/notification_service.dart';
 import 'core/services/reminder_service.dart';
 import 'core/services/recurring_confirmation_service.dart';
 import 'core/theme/app_colors.dart';
+import 'features/assistant/alert_worker.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/shell/main_shell.dart';
@@ -40,6 +41,8 @@ Future<void> main() async {
   try {
     await Workmanager().initialize(autoBackupDispatcher, isInDebugMode: false);
     debugPrint('[main] WorkManager initialised.');
+    // Schedule the daily Flux AI alert evaluation task if not already registered.
+    await scheduleAlertEvaluation();
   } catch (e) {
     debugPrint('[main] WorkManager init failed: $e');
   }

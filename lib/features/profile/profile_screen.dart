@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/account_service.dart';
 import '../../core/services/auto_backup_service.dart';
@@ -20,6 +21,7 @@ import '../categories/categories_screen.dart';
 import '../tags/tags_screen.dart';
 import '../help/help_screen.dart';
 import '../onboarding/onboarding_tour_screen.dart';
+import '../assistant/ui/assistant_settings_tile.dart';
 import 'privacy_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -309,6 +311,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         );
                       },
                     ),
+                    // ── AI Assistant ──────────────────────────────────────
+                    _groupDivider(),
+                    AssistantSettingsTile(
+                      transactionService: transactionService,
+                      accountService: accountService,
+                      budgetService: budgetService,
+                      categoryService: categoryService,
+                      tagService: tagService,
+                      creditCardBillService: billService,
+                    ),
+                    _divider(),
+                    _tile(
+                      icon: Icons.calendar_today_rounded,
+                      label: 'Salary Credit Day',
+                      color: AppColors.primary,
+                      trailing: const _SalaryDayTrailing(),
+                      showChevron: false,
+                      onTap: () => _showSalaryDayPicker(context),
+                    ),
                     // ── Data & Backup ─────────────────────────────────────
                     _groupDivider(),
                     ListenableBuilder(
@@ -502,9 +523,86 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Auto-Backup ───────────────────────────────────────────────────────────
+  // ── Salary day setting ────────────────────────────────────────────────────
 
-  /// Called when the user flips the Auto-Backup toggle.
+  Future<void> _showSalaryDayPicker(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getInt('flux_ai_salary_day_override');
+    int? selected = current;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Salary Credit Day'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Set the day of the month when your salary is usually credited. '
+                'Leave unset to let Flux AI infer it automatically.',
+                style: TextStyle(fontSize: 13, color: Color(0xFF6B7C93)),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int?>(
+                value: selected,
+                decoration: const InputDecoration(
+                  labelText: 'Day of month',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem<int?>(
+                    value: null,
+                    child: Text('Auto-detect'),
+                  ),
+                  ...List.generate(
+                    28,
+                    (i) => DropdownMenuItem<int?>(
+                      value: i + 1,
+                      child: Text('${i + 1}'),
+                    ),
+                  ),
+                ],
+                onChanged: (v) => setState(() => selected = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                if (selected == null) {
+                  await prefs.remove('flux_ai_salary_day_override');
+                } else {
+                  await prefs.setInt('flux_ai_salary_day_override', selected!);
+                }
+                if (context.mounted) {
+                  Navigator.of(ctx).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        selected == null
+                            ? 'Salary day set to auto-detect'
+                            : 'Salary credit day set to $selected',
+                      ),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Auto-Backup ───────────────────────────────────────────────────────────  /// Called when the user flips the Auto-Backup toggle.
   Future<void> _onAutoBackupToggle(BuildContext context, bool enable) async {
     if (!enable) {
       await autoBackupService.setEnabled(false);
@@ -2250,6 +2348,51 @@ class _AutoBackupSettingsSheetState extends State<_AutoBackupSettingsSheet> {
             const SizedBox(height: 16),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Salary Day Trailing ───────────────────────────────────────────────────────
+
+/// Reads the salary day override from SharedPreferences and shows it as a
+/// compact trailing label. Shows "Auto" when no override is set.
+class _SalaryDayTrailing extends StatefulWidget {
+  const _SalaryDayTrailing();
+
+  @override
+  State<_SalaryDayTrailing> createState() => _SalaryDayTrailingState();
+}
+
+class _SalaryDayTrailingState extends State<_SalaryDayTrailing> {
+  int? _day;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final day = prefs.getInt('flux_ai_salary_day_override');
+    if (mounted)
+      setState(() {
+        _day = day;
+        _loaded = true;
+      });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) return const SizedBox.shrink();
+    return Text(
+      _day != null ? 'Day $_day' : 'Auto',
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        color: AppColors.textSecondary,
       ),
     );
   }

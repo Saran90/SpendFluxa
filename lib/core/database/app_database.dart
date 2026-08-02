@@ -19,7 +19,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _dbName = 'spendflux.db';
-  static const _dbVersion = 10;
+  static const _dbVersion = 11;
 
   Database? _db;
   bool _schemaValidated = false;
@@ -273,6 +273,51 @@ class AppDatabase {
           )
       ''');
     }
+    if (oldVersion < 11) {
+      // Add AI assistant tables: chat history, financial plans, alert dedup records.
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS assistant_messages (
+          id          TEXT PRIMARY KEY,
+          session_id  TEXT NOT NULL,
+          role        TEXT NOT NULL CHECK(role IN ('user','assistant','system','tool')),
+          content     TEXT NOT NULL,
+          timestamp   TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_assistant_messages_session
+          ON assistant_messages(session_id, timestamp DESC)
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS financial_plans (
+          id                       TEXT PRIMARY KEY,
+          name                     TEXT NOT NULL,
+          type                     TEXT NOT NULL CHECK(type IN ('goal','event')),
+          target_amount            REAL NOT NULL,
+          target_date              TEXT NOT NULL,
+          priority                 TEXT CHECK(priority IN ('low','medium','high')),
+          current_savings          REAL NOT NULL DEFAULT 0,
+          preferred_account_id     TEXT,
+          contribution_frequency   TEXT NOT NULL CHECK(contribution_frequency IN ('weekly','monthly')),
+          created_at               TEXT NOT NULL,
+          FOREIGN KEY (preferred_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS alert_records (
+          id          TEXT PRIMARY KEY,
+          alert_type  TEXT NOT NULL,
+          subject     TEXT NOT NULL DEFAULT '',
+          emitted_at  TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_alert_records_type_subject
+          ON alert_records(alert_type, subject, emitted_at DESC)
+      ''');
+    }
   }
 
   Future<void> _createTables(Database db) async {
@@ -422,6 +467,52 @@ class AppDatabase {
         FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
         FOREIGN KEY (paid_from_account_id) REFERENCES accounts(id) ON DELETE SET NULL
       )
+    ''');
+
+    // AI assistant: chat message history
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS assistant_messages (
+        id          TEXT PRIMARY KEY,
+        session_id  TEXT NOT NULL,
+        role        TEXT NOT NULL CHECK(role IN ('user','assistant','system','tool')),
+        content     TEXT NOT NULL,
+        timestamp   TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_assistant_messages_session
+        ON assistant_messages(session_id, timestamp DESC)
+    ''');
+
+    // AI assistant: financial goals and event plans
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS financial_plans (
+        id                       TEXT PRIMARY KEY,
+        name                     TEXT NOT NULL,
+        type                     TEXT NOT NULL CHECK(type IN ('goal','event')),
+        target_amount            REAL NOT NULL,
+        target_date              TEXT NOT NULL,
+        priority                 TEXT CHECK(priority IN ('low','medium','high')),
+        current_savings          REAL NOT NULL DEFAULT 0,
+        preferred_account_id     TEXT,
+        contribution_frequency   TEXT NOT NULL CHECK(contribution_frequency IN ('weekly','monthly')),
+        created_at               TEXT NOT NULL,
+        FOREIGN KEY (preferred_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+      )
+    ''');
+
+    // AI assistant: alert deduplication records
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS alert_records (
+        id          TEXT PRIMARY KEY,
+        alert_type  TEXT NOT NULL,
+        subject     TEXT NOT NULL DEFAULT '',
+        emitted_at  TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_alert_records_type_subject
+        ON alert_records(alert_type, subject, emitted_at DESC)
     ''');
   }
 
@@ -865,6 +956,9 @@ class AppDatabase {
       await txn.delete('recurring_confirmations');
       await txn.delete('credit_card_bills');
       await txn.delete('accounts');
+      await txn.delete('assistant_messages');
+      await txn.delete('financial_plans');
+      await txn.delete('alert_records');
 
       // Re-seed default accounts so the next user has a working starting state
       for (final acc in _defaultAccounts()) {

@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'dart:io';
 
+import '../engine/abstract_ai_engine.dart';
 import '../pigeon/flux_ai_api.g.dart';
 
-/// Dart wrapper around Pigeon Flux AI host API.
-class FluxAiEngine implements FluxAiFlutterApi {
+/// Concrete [AbstractAiEngine] implementation backed by MediaPipe LLM
+/// Inference via the Pigeon-generated [FluxAiHostApi] / [FluxAiFlutterApi].
+///
+/// Android-only: all methods return safe no-op values on other platforms.
+class FluxAiEngine implements AbstractAiEngine, FluxAiFlutterApi {
   FluxAiEngine() {
+    // Register this instance as the Dart-side Pigeon callback receiver.
     FluxAiFlutterApi.setUp(this);
     _host = FluxAiHostApi();
   }
@@ -16,12 +21,101 @@ class FluxAiEngine implements FluxAiFlutterApi {
   final _completeController = StreamController<String>.broadcast();
   final _errorController = StreamController<String>.broadcast();
 
+  bool _modelLoaded = false;
+
+  // ── AbstractAiEngine ──────────────────────────────────────────────────────
+
+  @override
+  bool get isModelLoaded => _modelLoaded;
+
+  @override
   Stream<String> get tokenStream => _tokenController.stream;
+
+  @override
   Stream<String> get completeStream => _completeController.stream;
+
+  @override
   Stream<String> get errorStream => _errorController.stream;
 
-  bool _modelLoaded = false;
-  bool get isModelLoaded => _modelLoaded;
+  @override
+  Future<bool> loadModel(String path) async {
+    if (!Platform.isAndroid) {
+      _modelLoaded = false;
+      return false;
+    }
+    final file = File(path);
+    if (!await file.exists()) {
+      _modelLoaded = false;
+      _errorController.add('Model file not found: $path');
+      return false;
+    }
+    try {
+      final ok = await _host.loadModel(path);
+      _modelLoaded = ok;
+      return ok;
+    } catch (e) {
+      _modelLoaded = false;
+      _errorController.add('Model load failed: $e');
+      return false;
+    }
+  }
+
+  @override
+  Future<void> unloadModel() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _host.unloadModel();
+    } catch (_) {}
+    _modelLoaded = false;
+  }
+
+  @override
+  Future<bool> generateResponseStreaming(
+    String prompt,
+    String systemPrompt,
+  ) async {
+    if (!Platform.isAndroid) {
+      _errorController.add('Flux AI is only available on Android.');
+      return false;
+    }
+    try {
+      return await _host.generateResponseStreaming(prompt, systemPrompt);
+    } catch (e) {
+      _errorController.add('Generation failed: $e');
+      return false;
+    }
+  }
+
+  @override
+  Future<String> generateResponse(String prompt, String systemPrompt) async {
+    if (!Platform.isAndroid) {
+      return '';
+    }
+    try {
+      return await _host.generateResponse(prompt, systemPrompt);
+    } catch (e) {
+      _errorController.add('Generation failed: $e');
+      return '';
+    }
+  }
+
+  @override
+  void cancelGeneration() {
+    if (!Platform.isAndroid) return;
+    try {
+      _host.cancelGeneration();
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    cancelGeneration();
+    if (!_tokenController.isClosed) _tokenController.close();
+    if (!_completeController.isClosed) _completeController.close();
+    if (!_errorController.isClosed) _errorController.close();
+  }
+
+  // ── FluxAiFlutterApi callbacks (called from native Android layer) ─────────
 
   @override
   void onToken(String token) {
@@ -44,72 +138,18 @@ class FluxAiEngine implements FluxAiFlutterApi {
     }
   }
 
-  Future<bool> loadModel(String modelPath) async {
-    if (!Platform.isAndroid) {
-      _modelLoaded = false;
-      return false;
-    }
-    final file = File(modelPath);
-    if (!await file.exists()) {
-      _modelLoaded = false;
-      return false;
-    }
-    try {
-      final ok = await _host.loadModel(modelPath);
-      _modelLoaded = ok;
-      return ok;
-    } catch (e) {
-      _modelLoaded = false;
-      onGenerationError('Model load failed: $e');
-      return false;
-    }
-  }
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
-  Future<void> unloadModel() async {
-    if (!Platform.isAndroid) return;
-    try {
-      await _host.unloadModel();
-    } catch (_) {}
-    _modelLoaded = false;
-  }
-
+  /// Returns the current model status from the native layer.
+  /// Useful for diagnostics; not part of [AbstractAiEngine].
   Future<FluxAiModelStatus> getModelStatus() async {
     if (!Platform.isAndroid) {
       return FluxAiModelStatus(
         isLoaded: false,
         modelPath: null,
-        errorMessage: 'Flux AI is only available on Android',
+        errorMessage: 'Flux AI is only available on Android.',
       );
     }
     return _host.getModelStatus();
-  }
-
-  Future<String> generateResponse(String prompt, String systemPrompt) async {
-    if (!Platform.isAndroid) {
-      throw UnsupportedError('Flux AI requires Android');
-    }
-    return _host.generateResponse(prompt, systemPrompt);
-  }
-
-  Future<bool> generateResponseStreaming(
-    String prompt,
-    String systemPrompt,
-  ) async {
-    if (!Platform.isAndroid) {
-      throw UnsupportedError('Flux AI requires Android');
-    }
-    return _host.generateResponseStreaming(prompt, systemPrompt);
-  }
-
-  void cancelGeneration() {
-    if (!Platform.isAndroid) return;
-    _host.cancelGeneration();
-  }
-
-  void dispose() {
-    cancelGeneration();
-    _tokenController.close();
-    _completeController.close();
-    _errorController.close();
   }
 }
