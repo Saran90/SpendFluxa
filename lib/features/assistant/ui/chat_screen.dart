@@ -44,6 +44,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
   }
 
+  void _startGuidedTransaction(String type) {
+    ref.read(assistantSessionProvider.notifier).startGuidedTransaction(type);
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -175,30 +179,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         children: [
           // Message list
           Expanded(
-            child: sessionState.messages.isEmpty
-                ? _EmptyState()
-                : Builder(
-                    builder: (_) {
-                      // Only show user-facing messages — strip hidden tool-call
-                      // JSON, internal system messages, and tool result messages.
-                      final visible = sessionState.messages
-                          .where(
-                            (m) =>
-                                !m.isHidden &&
-                                m.role != ChatRole.tool &&
-                                m.role != ChatRole.system,
-                          )
-                          .toList();
-                      if (visible.isEmpty) return _EmptyState();
-                      return ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        itemCount: visible.length,
-                        itemBuilder: (_, i) =>
-                            ChatMessageTile(message: visible[i]),
-                      );
-                    },
-                  ),
+            child: Builder(
+              builder: (_) {
+                // Only show user-facing messages — strip hidden tool-call
+                // JSON, internal system messages, and tool result messages.
+                final visible = sessionState.messages
+                    .where(
+                      (m) =>
+                          !m.isHidden &&
+                          m.role != ChatRole.tool &&
+                          m.role != ChatRole.system,
+                    )
+                    .toList();
+
+                // If no messages, show greeting as first item with quick actions
+                if (visible.isEmpty) {
+                  return ListView(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    children: [
+                      _WelcomeGreeting(
+                        onAddExpense: () => _startGuidedTransaction('expense'),
+                        onAddIncome: () => _startGuidedTransaction('income'),
+                      ),
+                    ],
+                  );
+                }
+
+                return ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  itemCount: visible.length,
+                  itemBuilder: (_, i) => ChatMessageTile(message: visible[i]),
+                );
+              },
+            ),
           ),
 
           // Divider
@@ -218,45 +233,148 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 }
 
-// ── Empty state ────────────────────────────────────────────────────────────────
+// ── Welcome greeting message ──────────────────────────────────────────────────
 
-class _EmptyState extends StatelessWidget {
+class _WelcomeGreeting extends StatelessWidget {
+  final VoidCallback? onAddExpense;
+  final VoidCallback? onAddIncome;
+
+  const _WelcomeGreeting({this.onAddExpense, this.onAddIncome});
+
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.chat_bubble_outline_rounded,
-              size: 56,
-              color: AppColors.primary.withValues(alpha: 0.3),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            margin: const EdgeInsets.only(right: 8, top: 2),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'Ask Flux AI anything',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
+            child: const Icon(
+              Icons.smart_toy_rounded,
+              size: 16,
+              color: AppColors.primary,
+            ),
+          ),
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  topRight: Radius.circular(18),
+                  bottomLeft: Radius.circular(4),
+                  bottomRight: Radius.circular(18),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Personalized greeting
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final authService = ref.watch(authServiceProvider);
+                      final userName =
+                          authService.currentUser?.displayName ?? 'there';
+                      final displayName = userName.isNotEmpty
+                          ? userName.split(' ')[0]
+                          : 'there';
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hey $displayName,',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'how can I help you today?',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  // Quick action buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _QuickActionButton(
+                          icon: Icons.remove_circle_outline_rounded,
+                          label: 'Add Expense',
+                          onPressed: onAddExpense ?? () {},
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _QuickActionButton(
+                          icon: Icons.add_circle_outline_rounded,
+                          label: 'Add Income',
+                          onPressed: onAddIncome ?? () {},
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              '"How much did I spend on food this month?"\n'
-              '"Can I afford a trip next month?"\n'
-              '"Add ₹500 grocery expense"',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-                height: 1.6,
-              ),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Quick action button ────────────────────────────────────────────────────────
+
+class _QuickActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  const _QuickActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.primary,
+        side: const BorderSide(color: AppColors.primary, width: 1.5),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }

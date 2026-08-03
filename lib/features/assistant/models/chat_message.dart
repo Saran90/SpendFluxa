@@ -10,6 +10,24 @@ enum ChatMessageType {
 
   /// Account picker — shows a list of accounts filtered by a chosen type.
   accountPicker,
+
+  /// Category picker — shows top-matching categories as chips.
+  categoryPicker,
+
+  /// Guided transaction form — collects amount, category, payment method, and date step-by-step.
+  guidedTransactionForm,
+
+  /// Date picker with today button and date selection.
+  datePicker,
+
+  /// Guided category quick-select — shows category chips for the guided flow.
+  guidedCategoryPicker,
+
+  /// Guided payment method quick-select — shows payment method chips for the guided flow.
+  guidedAccountPicker,
+
+  /// Guided account sub-picker — shows specific accounts of the chosen type.
+  guidedAccountSubPicker,
 }
 
 class ChatMessage {

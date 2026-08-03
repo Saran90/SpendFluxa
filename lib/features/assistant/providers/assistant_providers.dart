@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/account_service.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/budget_service.dart';
 import '../../../core/services/category_service.dart';
 import '../../../core/services/credit_card_bill_service.dart';
@@ -46,6 +47,12 @@ import 'assistant_session_notifier.dart';
 final transactionServiceProvider = Provider<TransactionService>((ref) {
   throw UnimplementedError(
     'transactionServiceProvider must be overridden with a real TransactionService instance.',
+  );
+});
+
+final authServiceProvider = Provider<AuthService>((ref) {
+  throw UnimplementedError(
+    'authServiceProvider must be overridden with a real AuthService instance.',
   );
 });
 
@@ -199,6 +206,7 @@ final conversationManagerProvider = Provider<ConversationManager>((ref) {
     dispatcher: ref.watch(toolDispatcherProvider),
     contextManager: ref.watch(contextWindowManagerProvider),
     transactionService: ref.watch(transactionServiceProvider),
+    accountService: ref.watch(accountServiceProvider),
   );
 });
 

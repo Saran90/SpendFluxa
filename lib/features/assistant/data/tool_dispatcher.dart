@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/models/account.dart';
@@ -634,65 +635,307 @@ class ToolDispatcher {
     return ToolResult.success({'planId': id, 'message': 'Plan deleted.'});
   }
 
-  /// Tries to resolve an account ID purely from free text (e.g. a user message).
-  /// Returns the account ID string (name) if found, null otherwise.
-  /// This is used by [ConversationManager] to enrich tool calls before dispatch.
+  /// Resolves an account from free text using a type-first approach:
+  ///
+  /// 1. Detect account type from keywords in [text]
+  ///    (credit card, wallet, cash, bank, savings)
+  /// 2. Filter accounts to only that type
+  /// 3. Word-match within that filtered list
+  /// 4. If confident match found → return it
+  /// 5. If ambiguous (multiple accounts, low score) → return null
+  ///    so the caller shows the picker
+  ///
+  /// Returns the account ID on confident match, null if ambiguous/unknown.
   String? tryResolveAccountFromText(String text) {
     final q = text.trim().toLowerCase();
     final accounts = accountService.all;
     if (accounts.isEmpty) return null;
 
-    // Substring match on account name
-    for (final a in accounts) {
-      if (q.contains(a.name.toLowerCase())) return a.id;
+    // ── Step 1: detect account type from keywords ─────────────────────────
+    AccountType? detectedType;
+
+    // Credit card check — must come before bank since "credit card" contains
+    // no "bank" but "bank credit card" contains "bank".
+    // Prioritise explicit "credit card" / "credit" / "cc" phrase.
+    final isCreditCard =
+        q.contains('credit card') ||
+        q.contains('credit card') ||
+        RegExp(r'\bcredit\b').hasMatch(q) ||
+        RegExp(r'\bcc\b').hasMatch(q);
+
+    final isWallet =
+        q.contains('wallet') ||
+        RegExp(
+          r'\b(paytm|phonepe|gpay|google pay|amazon pay|freecharge|mobikwik|upi)\b',
+        ).hasMatch(q);
+
+    final isCash = RegExp(r'\bcash\b').hasMatch(q);
+
+    final isSavings =
+        q.contains('savings account') ||
+        RegExp(r'\b(fd|fixed deposit|recurring deposit|rd)\b').hasMatch(q);
+
+    // Bank: has "bank" but NOT "credit" (otherwise it's a bank credit card)
+    final isBank = RegExp(r'\bbank\b').hasMatch(q) && !isCreditCard;
+
+    if (isCreditCard) {
+      detectedType = AccountType.creditCard;
+    } else if (isWallet) {
+      detectedType = AccountType.wallet;
+    } else if (isCash) {
+      detectedType = AccountType.cash;
+    } else if (isSavings) {
+      detectedType = AccountType.savings;
+    } else if (isBank) {
+      detectedType = AccountType.bank;
     }
 
-    // Word-level match
-    final queryWords = q.split(RegExp(r'\W+')).where((w) => w.length > 2);
-    for (final a in accounts) {
-      final nameWords = a.name.toLowerCase().split(RegExp(r'\W+'));
+    // ── Step 2: filter to detected type (or all if unknown) ───────────────
+    final pool = detectedType != null
+        ? accounts.where((a) => a.type == detectedType).toList()
+        : accounts;
+
+    if (pool.isEmpty) return null;
+
+    // If only one account of that type, return it directly
+    if (pool.length == 1) return pool.first.id;
+
+    // ── Step 3: word-match within the pool ────────────────────────────────
+    // Strip the type keyword from the query so we match on the bank/card name
+    // e.g. "federal bank super credit card" → strip "credit card" → "federal bank super"
+    var nameQuery = q
+        .replaceAll('credit card', '')
+        .replaceAll('debit card', '')
+        .replaceAll('credit', '')
+        .replaceAll('wallet', '')
+        .replaceAll('bank account', '')
+        .replaceAll('savings account', '')
+        .replaceAll('cash', '')
+        .replaceAll(RegExp(r'\b(using|via|with|from|through|on|by)\b'), '')
+        .trim();
+
+    // If nothing meaningful left, fall back to full query
+    if (nameQuery.length < 3) nameQuery = q;
+
+    final queryWords = nameQuery
+        .split(RegExp(r'\W+'))
+        .where((w) => w.length > 2)
+        .toList();
+
+    if (queryWords.isEmpty) {
+      // No name words — if single type match return first, else null (show picker)
+      return detectedType != null ? pool.first.id : null;
+    }
+
+    final scores = <String, int>{};
+    for (final a in pool) {
+      final name = a.name.toLowerCase();
+      int score = 0;
+
+      // Full cleaned query contained in name
+      if (name.contains(nameQuery)) score += 50;
+      // Full name contained in query
+      if (nameQuery.contains(name)) score += 40;
+
+      // Word-level matching
+      final nameWords = name.split(RegExp(r'\W+'));
       for (final qw in queryWords) {
         for (final nw in nameWords) {
-          if (nw.contains(qw) || qw.contains(nw)) return a.id;
+          if (nw == qw) {
+            score += 20; // exact word
+          } else if (nw.contains(qw) || qw.contains(nw)) {
+            score += 8; // partial
+          }
         }
       }
+      scores[a.id] = score;
     }
 
-    // Type keyword
-    final creditCardKeywords = ['credit', 'card', 'cc'];
-    final walletKeywords = ['wallet', 'paytm', 'phonepe', 'gpay', 'upi'];
-    final cashKeywords = ['cash'];
-    final savingsKeywords = ['savings', 'fd'];
+    final sorted = scores.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
-    bool matchesAny(Iterable<String> keywords) =>
-        keywords.any((k) => q.contains(k));
-
-    if (matchesAny(creditCardKeywords)) {
-      return accounts
-          .where((a) => a.type == AccountType.creditCard)
-          .firstOrNull
-          ?.id;
-    }
-    if (matchesAny(walletKeywords)) {
-      return accounts
-          .where((a) => a.type == AccountType.wallet)
-          .firstOrNull
-          ?.id;
-    }
-    if (matchesAny(cashKeywords)) {
-      return accounts.where((a) => a.type == AccountType.cash).firstOrNull?.id;
-    }
-    if (matchesAny(savingsKeywords)) {
-      return accounts
-          .where((a) => a.type == AccountType.savings)
-          .firstOrNull
-          ?.id;
+    // ── Step 4: confident if top score is clearly ahead ───────────────────
+    if (sorted.isNotEmpty && sorted.first.value > 0) {
+      // Confident if top score ≥ 20 AND at least 2× the second score
+      final topScore = sorted.first.value;
+      final secondScore = sorted.length > 1 ? sorted[1].value : 0;
+      if (topScore >= 20 && topScore >= secondScore * 2) {
+        return sorted.first.key;
+      }
+      // Only one account matched at all
+      final nonZero = sorted.where((e) => e.value > 0).toList();
+      if (nonZero.length == 1) return nonZero.first.key;
     }
 
+    // ── Step 5: ambiguous — return null so picker is shown ────────────────
     return null;
   }
 
-  // ── Private helpers ────────────────────────────────────────────────────────
+  /// Returns accounts filtered to the type detected in [text].
+  /// Used by the account picker to pre-filter the list when the type is clear.
+  AccountType? detectAccountTypeFromText(String text) {
+    final q = text.trim().toLowerCase();
+    if (q.contains('credit card') ||
+        RegExp(r'\bcredit\b').hasMatch(q) ||
+        RegExp(r'\bcc\b').hasMatch(q)) {
+      return AccountType.creditCard;
+    }
+    if (q.contains('wallet') ||
+        RegExp(r'\b(paytm|phonepe|gpay|google pay|upi)\b').hasMatch(q)) {
+      return AccountType.wallet;
+    }
+    if (RegExp(r'\bcash\b').hasMatch(q)) return AccountType.cash;
+    if (q.contains('savings account') ||
+        RegExp(r'\b(fd|fixed deposit)\b').hasMatch(q)) {
+      return AccountType.savings;
+    }
+    if (RegExp(r'\bbank\b').hasMatch(q)) return AccountType.bank;
+    return null;
+  }
+
+  /// Returns the best-matching category plus up to [maxCandidates] alternatives,
+  /// ordered by relevance. The first element is always the best match.
+  /// [input] can be a rich query (LLM category arg + full user message).
+  List<TransactionCategory> resolveCategoryWithCandidates(
+    TransactionType type,
+    String? input, {
+    int maxCandidates = 4,
+  }) {
+    // Filter categories valid for this transaction type
+    final validCats = TransactionCategory.values.where((cat) {
+      if (type == TransactionType.income) {
+        return const {
+          TransactionCategory.salary,
+          TransactionCategory.freelance,
+          TransactionCategory.investment,
+          TransactionCategory.gift,
+          TransactionCategory.cashback,
+        }.contains(cat);
+      }
+      if (type == TransactionType.transfer) {
+        return const {
+          TransactionCategory.savings,
+          TransactionCategory.childEducation,
+          TransactionCategory.vacation,
+          TransactionCategory.emergencyFund,
+          TransactionCategory.transferInvestment,
+          TransactionCategory.houseDownPayment,
+          TransactionCategory.retirement,
+          TransactionCategory.transferOther,
+        }.contains(cat);
+      }
+      // expense — exclude income/transfer categories
+      return !const {
+        TransactionCategory.salary,
+        TransactionCategory.freelance,
+        TransactionCategory.investment,
+        TransactionCategory.gift,
+        TransactionCategory.cashback,
+        TransactionCategory.savings,
+        TransactionCategory.childEducation,
+        TransactionCategory.vacation,
+        TransactionCategory.emergencyFund,
+        TransactionCategory.transferInvestment,
+        TransactionCategory.houseDownPayment,
+        TransactionCategory.retirement,
+        TransactionCategory.transferOther,
+      }.contains(cat);
+    }).toList();
+
+    // Get the best match via the synonym-aware resolver
+    final best = _resolveCategory(type, input);
+
+    if (input == null || input.trim().isEmpty) {
+      // No input — return best + first N-1 valid categories
+      final result = <TransactionCategory>[best];
+      for (final cat in validCats) {
+        if (result.length >= maxCandidates) break;
+        if (!result.contains(cat)) result.add(cat);
+      }
+      return result;
+    }
+
+    // Extract meaningful query words from the rich input.
+    // Strip numbers, payment phrases, stop words — keep item/action words.
+    // Also normalize underscores/hyphens to spaces.
+    final stripped = input
+        .toLowerCase()
+        .replaceAll(RegExp(r'[_\-]'), ' ')
+        .replaceAll(RegExp(r'[\d,₹]+'), '') // remove numbers/amounts
+        .replaceAll(
+          RegExp(
+            r'\b(using|with|via|through|on|by|from|for|the|a|an|my|some|bought|paid|spent|got|add|added|expense|income)\b',
+          ),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    final qWords = stripped
+        .split(RegExp(r'\W+'))
+        .where((w) => w.length > 2)
+        .toSet()
+        .toList();
+
+    debugPrint('[CategoryScore] input="$input" qWords=$qWords');
+
+    // Score each valid category
+    final scored = <TransactionCategory, int>{};
+    for (final cat in validCats) {
+      int score = 0;
+
+      // Always boost the best match so it stays first
+      if (cat == best) score += 100;
+
+      final label = cat.label.toLowerCase();
+      final name = cat.name.toLowerCase();
+
+      // Exact full label/name match with any query word
+      for (final qw in qWords) {
+        if (label == qw || name == qw) score += 50;
+        if (label.contains(qw)) score += 25;
+        if (qw.contains(label)) score += 20;
+        if (name.contains(qw)) score += 15;
+        if (qw.contains(name)) score += 12;
+        // Word-level overlap within multi-word labels
+        for (final lw in label.split(RegExp(r'\W+'))) {
+          if (lw.length > 2) {
+            if (lw == qw)
+              score += 20;
+            else if (lw.contains(qw) || qw.contains(lw))
+              score += 8;
+          }
+        }
+      }
+
+      scored[cat] = score;
+    }
+
+    final sorted = scored.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    debugPrint(
+      '[CategoryScore] top5: ${sorted.take(5).map((e) => "${e.key.label}=${e.value}").join(", ")}',
+    );
+
+    // Build result: best first, then up to maxCandidates-1 alternatives
+    final result = <TransactionCategory>[best];
+    final remaining = sorted.where((e) => e.key != best).toList();
+
+    // First: categories with meaningful score
+    for (final entry in remaining) {
+      if (result.length >= maxCandidates) break;
+      if (entry.value > 0) result.add(entry.key);
+    }
+
+    // Pad if needed
+    for (final entry in remaining) {
+      if (result.length >= maxCandidates) break;
+      if (!result.contains(entry.key)) result.add(entry.key);
+    }
+
+    return result;
+  }
 
   /// Resolves a category label from the LLM using fuzzy matching.
   ///
@@ -710,9 +953,15 @@ class ToolDispatcher {
           : TransactionCategory.other;
     }
 
-    final q = input.trim().toLowerCase();
+    // Normalize: lowercase, replace underscores/hyphens with spaces, collapse whitespace
+    final q = input
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[_\-]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
 
-    // 1. Exact enum name
+    // 1. Exact enum name (after normalization)
     for (final cat in TransactionCategory.values) {
       if (cat.name.toLowerCase() == q) return cat;
     }
@@ -722,24 +971,182 @@ class ToolDispatcher {
       if (cat.label.toLowerCase() == q) return cat;
     }
 
-    // 3. Synonym map — covers common LLM outputs
+    // 3. Comprehensive item-to-category map.
+    // Covers single words AND multi-word phrases (checked longest first).
+    // Indian household items, services, and common LLM outputs are included.
     const synonyms = <String, TransactionCategory>{
+      // ── Grocery ──────────────────────────────────────────────────────────
       'groceries': TransactionCategory.grocery,
+      'grocery': TransactionCategory.grocery,
       'supermarket': TransactionCategory.grocery,
+      'kirana': TransactionCategory.grocery,
+      'provision': TransactionCategory.grocery,
+      'provisions': TransactionCategory.grocery,
+      'rice': TransactionCategory.grocery,
+      'wheat': TransactionCategory.grocery,
+      'flour': TransactionCategory.grocery,
+      'maida': TransactionCategory.grocery,
+      'atta': TransactionCategory.grocery,
+      'dal': TransactionCategory.grocery,
+      'lentils': TransactionCategory.grocery,
+      'pulses': TransactionCategory.grocery,
+      'oil': TransactionCategory.grocery,
+      'ghee': TransactionCategory.grocery,
+      'butter': TransactionCategory.grocery,
+      'milk': TransactionCategory.grocery,
+      'curd': TransactionCategory.grocery,
+      'yogurt': TransactionCategory.grocery,
+      'cheese': TransactionCategory.grocery,
+      'eggs': TransactionCategory.grocery,
+      'sugar': TransactionCategory.grocery,
+      'salt': TransactionCategory.grocery,
+      'spices': TransactionCategory.grocery,
+      'masala': TransactionCategory.grocery,
+      'turmeric': TransactionCategory.grocery,
+      'chilli': TransactionCategory.grocery,
+      'pepper': TransactionCategory.grocery,
+      'tea': TransactionCategory.grocery,
+      'coffee powder': TransactionCategory.grocery,
+      'tea powder': TransactionCategory.grocery,
+      'biscuits': TransactionCategory.grocery,
+      'oats': TransactionCategory.grocery,
+      'cereals': TransactionCategory.grocery,
+      'bread': TransactionCategory.grocery,
+      'noodles': TransactionCategory.grocery,
+      'pasta': TransactionCategory.grocery,
+      'soap': TransactionCategory.grocery,
+      'shampoo': TransactionCategory.grocery,
+      'detergent': TransactionCategory.grocery,
+      'toothpaste': TransactionCategory.grocery,
+      'toothbrush': TransactionCategory.grocery,
+      'tissue': TransactionCategory.grocery,
+      'sanitary': TransactionCategory.grocery,
+      'household': TransactionCategory.grocery,
+
+      // ── Vegetables ───────────────────────────────────────────────────────
       'vegetables': TransactionCategory.vegetables,
       'veggies': TransactionCategory.vegetables,
+      'vegetable': TransactionCategory.vegetables,
+      'sabzi': TransactionCategory.vegetables,
+      'tomato': TransactionCategory.vegetables,
+      'onion': TransactionCategory.vegetables,
+      'potato': TransactionCategory.vegetables,
+      'carrot': TransactionCategory.vegetables,
+      'cabbage': TransactionCategory.vegetables,
+      'spinach': TransactionCategory.vegetables,
+      'cauliflower': TransactionCategory.vegetables,
+      'brinjal': TransactionCategory.vegetables,
+      'bitter gourd': TransactionCategory.vegetables,
+      'lady finger': TransactionCategory.vegetables,
+      'okra': TransactionCategory.vegetables,
+      'beans': TransactionCategory.vegetables,
+      'peas': TransactionCategory.vegetables,
+      'corn': TransactionCategory.vegetables,
+      'garlic': TransactionCategory.vegetables,
+      'ginger': TransactionCategory.vegetables,
+      'coriander': TransactionCategory.vegetables,
+      'mint': TransactionCategory.vegetables,
+      'fruits': TransactionCategory.vegetables,
+      'mango': TransactionCategory.vegetables,
+      'banana': TransactionCategory.vegetables,
+      'apple': TransactionCategory.vegetables,
+      'orange': TransactionCategory.vegetables,
+
+      // ── Food & Dining ─────────────────────────────────────────────────────
       'food': TransactionCategory.food,
       'restaurant': TransactionCategory.food,
       'dining': TransactionCategory.food,
-      'eating': TransactionCategory.food,
+      'eating out': TransactionCategory.food,
+      'lunch': TransactionCategory.food,
+      'dinner': TransactionCategory.food,
+      'breakfast': TransactionCategory.food,
+      'hotel': TransactionCategory.food,
+      'dhaba': TransactionCategory.food,
+      'biryani': TransactionCategory.food,
+      'pizza': TransactionCategory.food,
+      'burger': TransactionCategory.food,
+      'swiggy': TransactionCategory.food,
+      'zomato': TransactionCategory.food,
+      'food delivery': TransactionCategory.food,
       'cafe': TransactionCategory.food,
+      'canteen': TransactionCategory.food,
+      'mess': TransactionCategory.food,
+
+      // ── Drinks & Snacks ───────────────────────────────────────────────────
       'coffee': TransactionCategory.drinksAndSnacks,
       'drinks': TransactionCategory.drinksAndSnacks,
       'snacks': TransactionCategory.drinksAndSnacks,
+      'snack': TransactionCategory.drinksAndSnacks,
+      'juice': TransactionCategory.drinksAndSnacks,
+      'cold drink': TransactionCategory.drinksAndSnacks,
+      'cold drinks': TransactionCategory.drinksAndSnacks,
       'beverage': TransactionCategory.drinksAndSnacks,
+      'beverages': TransactionCategory.drinksAndSnacks,
+      'chips': TransactionCategory.drinksAndSnacks,
+      'chocolate': TransactionCategory.drinksAndSnacks,
+      'candy': TransactionCategory.drinksAndSnacks,
+      'ice cream': TransactionCategory.drinksAndSnacks,
+      'tea stall': TransactionCategory.drinksAndSnacks,
+      'chai': TransactionCategory.drinksAndSnacks,
+
+      // ── Bakery ────────────────────────────────────────────────────────────
       'bakery': TransactionCategory.bakery,
-      'bread': TransactionCategory.bakery,
+      'cake': TransactionCategory.bakery,
       'sweets': TransactionCategory.bakery,
+      'mithai': TransactionCategory.bakery,
+      'ladoo': TransactionCategory.bakery,
+      'halwa': TransactionCategory.bakery,
+      'puff': TransactionCategory.bakery,
+      'croissant': TransactionCategory.bakery,
+      'pastry': TransactionCategory.bakery,
+
+      // ── Bills ─────────────────────────────────────────────────────────────
+      'bill': TransactionCategory.bills,
+      'bills': TransactionCategory.bills,
+      'electricity bill': TransactionCategory.bills,
+      'water bill': TransactionCategory.bills,
+      'gas bill': TransactionCategory.bills,
+      'phone bill': TransactionCategory.bills,
+      'mobile bill': TransactionCategory.bills,
+      'landline bill': TransactionCategory.bills,
+      'broadband bill': TransactionCategory.bills,
+      'cable bill': TransactionCategory.bills,
+      'maintenance': TransactionCategory.bills,
+      'society maintenance': TransactionCategory.bills,
+      'property tax': TransactionCategory.bills,
+      'credit card bill': TransactionCategory.bills,
+      'emi': TransactionCategory.bills,
+
+      // ── Utilities ─────────────────────────────────────────────────────────
+      'utilities': TransactionCategory.utilities,
+      'utility': TransactionCategory.utilities,
+      'electricity': TransactionCategory.utilities,
+      'power': TransactionCategory.utilities,
+      'water': TransactionCategory.utilities,
+      'internet': TransactionCategory.utilities,
+      'wifi': TransactionCategory.utilities,
+      'broadband': TransactionCategory.utilities,
+      'recharge': TransactionCategory.utilities,
+      'mobile recharge': TransactionCategory.utilities,
+      'phone recharge': TransactionCategory.utilities,
+      'prepaid recharge': TransactionCategory.utilities,
+      'dth recharge': TransactionCategory.utilities,
+      'dth': TransactionCategory.utilities,
+      'tata sky': TransactionCategory.utilities,
+      'airtel dth': TransactionCategory.utilities,
+      'gas cylinder': TransactionCategory.utilities,
+      'lpg cylinder': TransactionCategory.utilities,
+      'lpg': TransactionCategory.utilities,
+      'cylinder': TransactionCategory.utilities,
+      'cooking gas': TransactionCategory.utilities,
+      'piped gas': TransactionCategory.utilities,
+      'postpaid': TransactionCategory.utilities,
+      'jio': TransactionCategory.utilities,
+      'airtel': TransactionCategory.utilities,
+      'bsnl': TransactionCategory.utilities,
+      'vi': TransactionCategory.utilities,
+
+      // ── Transport ─────────────────────────────────────────────────────────
       'transport': TransactionCategory.transport,
       'cab': TransactionCategory.transport,
       'taxi': TransactionCategory.transport,
@@ -749,51 +1156,168 @@ class ToolDispatcher {
       'train': TransactionCategory.transport,
       'uber': TransactionCategory.transport,
       'ola': TransactionCategory.transport,
+      'rapido': TransactionCategory.transport,
+      'local train': TransactionCategory.transport,
+      'rickshaw': TransactionCategory.transport,
+      'bike taxi': TransactionCategory.transport,
+      'commute': TransactionCategory.transport,
+      'ticket': TransactionCategory.transport,
+      'travel ticket': TransactionCategory.transport,
+
+      // ── Fuel ─────────────────────────────────────────────────────────────
       'fuel': TransactionCategory.fuel,
       'petrol': TransactionCategory.fuel,
       'diesel': TransactionCategory.fuel,
-      'gas': TransactionCategory.fuel,
-      'shopping': TransactionCategory.shopping,
-      'clothes': TransactionCategory.shopping,
-      'apparel': TransactionCategory.shopping,
-      'fashion': TransactionCategory.shopping,
-      'entertainment': TransactionCategory.entertainment,
-      'movie': TransactionCategory.entertainment,
-      'netflix': TransactionCategory.entertainment,
-      'subscription': TransactionCategory.entertainment,
+      'gas station': TransactionCategory.fuel,
+      'filling': TransactionCategory.fuel,
+      'fuel filling': TransactionCategory.fuel,
+      'cng': TransactionCategory.fuel,
+      'ev charging': TransactionCategory.fuel,
+
+      // ── Health ────────────────────────────────────────────────────────────
       'health': TransactionCategory.health,
       'medical': TransactionCategory.health,
       'doctor': TransactionCategory.health,
+      'hospital': TransactionCategory.health,
+      'clinic': TransactionCategory.health,
       'pharmacy': TransactionCategory.health,
       'medicine': TransactionCategory.health,
-      'hospital': TransactionCategory.health,
-      'utilities': TransactionCategory.utilities,
-      'electricity': TransactionCategory.utilities,
-      'water': TransactionCategory.utilities,
-      'internet': TransactionCategory.utilities,
-      'wifi': TransactionCategory.utilities,
-      'rent': TransactionCategory.rent,
-      'house': TransactionCategory.rent,
-      'home': TransactionCategory.rent,
+      'medicines': TransactionCategory.health,
+      'tablets': TransactionCategory.health,
+      'tablet': TransactionCategory.health,
+      'injection': TransactionCategory.health,
+      'test': TransactionCategory.health,
+      'lab test': TransactionCategory.health,
+      'blood test': TransactionCategory.health,
+      'scan': TransactionCategory.health,
+      'xray': TransactionCategory.health,
+      'consultation': TransactionCategory.health,
+      'dentist': TransactionCategory.health,
+      'eye': TransactionCategory.health,
+      'glasses': TransactionCategory.health,
+      'gym': TransactionCategory.health,
+      'fitness': TransactionCategory.health,
+      'yoga': TransactionCategory.health,
+
+      // ── Shopping ──────────────────────────────────────────────────────────
+      'shopping': TransactionCategory.shopping,
+      'clothes': TransactionCategory.shopping,
+      'clothing': TransactionCategory.shopping,
+      'shirt': TransactionCategory.shopping,
+      'pants': TransactionCategory.shopping,
+      'dress': TransactionCategory.shopping,
+      'saree': TransactionCategory.shopping,
+      'shoes': TransactionCategory.shopping,
+      'footwear': TransactionCategory.shopping,
+      'bag': TransactionCategory.shopping,
+      'accessories': TransactionCategory.shopping,
+      'watch': TransactionCategory.shopping,
+      'jewellery': TransactionCategory.shopping,
+      'jewelry': TransactionCategory.shopping,
+      'toys': TransactionCategory.shopping,
+      'toy': TransactionCategory.shopping,
+      'electronics': TransactionCategory.shopping,
+      'gadget': TransactionCategory.shopping,
+      'gadgets': TransactionCategory.shopping,
+      'phone': TransactionCategory.shopping,
+      'mobile': TransactionCategory.shopping,
+      'laptop': TransactionCategory.shopping,
+      'appliance': TransactionCategory.shopping,
+      'appliances': TransactionCategory.shopping,
+      'amazon': TransactionCategory.shopping,
+      'flipkart': TransactionCategory.shopping,
+      'meesho': TransactionCategory.shopping,
+      'myntra': TransactionCategory.shopping,
+      'online shopping': TransactionCategory.shopping,
+
+      // ── Entertainment ─────────────────────────────────────────────────────
+      'entertainment': TransactionCategory.entertainment,
+      'movie': TransactionCategory.entertainment,
+      'movies': TransactionCategory.entertainment,
+      'cinema': TransactionCategory.entertainment,
+      'theatre': TransactionCategory.entertainment,
+      'netflix': TransactionCategory.entertainment,
+      'hotstar': TransactionCategory.entertainment,
+      'prime video': TransactionCategory.entertainment,
+      'spotify': TransactionCategory.entertainment,
+      'youtube premium': TransactionCategory.entertainment,
+      'ott': TransactionCategory.entertainment,
+      'game': TransactionCategory.entertainment,
+      'gaming': TransactionCategory.entertainment,
+      'concert': TransactionCategory.entertainment,
+      'show': TransactionCategory.entertainment,
+      'event': TransactionCategory.entertainment,
+      'amusement': TransactionCategory.entertainment,
+      'park': TransactionCategory.entertainment,
+      'subscription': TransactionCategory.entertainment,
+
+      // ── Education ─────────────────────────────────────────────────────────
       'education': TransactionCategory.education,
       'school': TransactionCategory.education,
       'college': TransactionCategory.education,
+      'university': TransactionCategory.education,
       'tuition': TransactionCategory.education,
+      'coaching': TransactionCategory.education,
+      'course': TransactionCategory.education,
+      'udemy': TransactionCategory.education,
+      'coursera': TransactionCategory.education,
+      'fees': TransactionCategory.education,
+      'admission': TransactionCategory.education,
+      'exam': TransactionCategory.education,
       'books': TransactionCategory.education,
-      'bills': TransactionCategory.bills,
+      'stationery': TransactionCategory.education,
+      'notebook': TransactionCategory.education,
+      'pencil': TransactionCategory.education,
+
+      // ── Insurance ─────────────────────────────────────────────────────────
       'insurance': TransactionCategory.insurance,
+      'premium': TransactionCategory.insurance,
+      'life insurance': TransactionCategory.insurance,
+      'health insurance': TransactionCategory.insurance,
+      'car insurance': TransactionCategory.insurance,
+      'vehicle insurance': TransactionCategory.insurance,
+      'term plan': TransactionCategory.insurance,
+      'policy': TransactionCategory.insurance,
+      'lic': TransactionCategory.insurance,
+
+      // ── Rent ─────────────────────────────────────────────────────────────
+      'rent': TransactionCategory.rent,
+      'house rent': TransactionCategory.rent,
+      'room rent': TransactionCategory.rent,
+      'pg': TransactionCategory.rent,
+      'hostel': TransactionCategory.rent,
+      'accommodation': TransactionCategory.rent,
+      'lease': TransactionCategory.rent,
+
+      // ── Income ────────────────────────────────────────────────────────────
       'salary': TransactionCategory.salary,
       'income': TransactionCategory.salary,
+      'wage': TransactionCategory.salary,
+      'stipend': TransactionCategory.salary,
       'freelance': TransactionCategory.freelance,
+      'freelancing': TransactionCategory.freelance,
+      'project payment': TransactionCategory.freelance,
+      'side income': TransactionCategory.freelance,
       'investment': TransactionCategory.investment,
+      'dividend': TransactionCategory.investment,
+      'interest': TransactionCategory.investment,
+      'returns': TransactionCategory.investment,
       'gift': TransactionCategory.gift,
       'cashback': TransactionCategory.cashback,
-      'savings': TransactionCategory.savings,
-      'vacation': TransactionCategory.vacation,
-      'travel': TransactionCategory.vacation,
-      'trip': TransactionCategory.vacation,
+      'refund': TransactionCategory.cashback,
+      'reward': TransactionCategory.cashback,
     };
+
+    // Check full query first
     if (synonyms.containsKey(q)) return synonyms[q]!;
+
+    // Check multi-word phrases by looking for any synonym key contained in q
+    // Sort by length descending to prefer longer (more specific) matches
+    final sortedKeys = synonyms.keys.toList()
+      ..sort((a, b) => b.length.compareTo(a.length));
+    for (final key in sortedKeys) {
+      if (key.contains(' ') && q.contains(key)) return synonyms[key]!;
+    }
 
     // 4. Partial word match: any category label that contains the query word
     for (final cat in TransactionCategory.values) {
@@ -817,74 +1341,23 @@ class ToolDispatcher {
   /// matching against the user's actual accounts.
   ///
   /// Matching order:
-  /// 1. Exact name match
-  /// 2. Name contains the query (or query contains the name)
-  /// 3. Any word in the query matches a word in the account name
-  /// 4. Account type keyword (e.g. "credit card", "wallet", "cash")
-  /// 5. Default account
+  /// Resolves an account ID from a name/phrase or a direct ID.
+  /// If [accountName] is already a valid account ID in the DB, returns it directly.
+  /// Otherwise delegates to [tryResolveAccountFromText] for fuzzy matching.
   String? _resolveAccountId(String? accountName) {
-    final accounts = accountService.all;
-    if (accounts.isEmpty) return null;
-
     if (accountName == null || accountName.trim().isEmpty) {
       return accountService.defaultAccount?.id;
     }
 
-    final q = accountName.trim().toLowerCase();
+    // Check if the value is already a direct account ID (UUID injected by enrichment)
+    final directMatch = accountService.all
+        .where((a) => a.id == accountName)
+        .firstOrNull;
+    if (directMatch != null) return directMatch.id;
 
-    // 1. Exact name
-    for (final a in accounts) {
-      if (a.name.toLowerCase() == q) return a.id;
-    }
-
-    // 2. Substring both ways
-    for (final a in accounts) {
-      final name = a.name.toLowerCase();
-      if (name.contains(q) || q.contains(name)) return a.id;
-    }
-
-    // 3. Word-level match — any word in the query matches any word in name
-    final queryWords = q.split(RegExp(r'\W+')).where((w) => w.length > 2);
-    for (final a in accounts) {
-      final nameWords = a.name.toLowerCase().split(RegExp(r'\W+'));
-      for (final qw in queryWords) {
-        for (final nw in nameWords) {
-          if (nw.contains(qw) || qw.contains(nw)) return a.id;
-        }
-      }
-    }
-
-    // 4. Account type keyword fallback
-    final creditCardKeywords = ['credit', 'card', 'cc'];
-    final walletKeywords = ['wallet', 'paytm', 'phonepe', 'gpay'];
-    final cashKeywords = ['cash'];
-    final savingsKeywords = ['savings', 'fd', 'deposit'];
-
-    bool matchesAny(Iterable<String> keywords) =>
-        keywords.any((k) => q.contains(k));
-
-    if (matchesAny(creditCardKeywords)) {
-      final cc = accounts
-          .where((a) => a.type == AccountType.creditCard)
-          .firstOrNull;
-      if (cc != null) return cc.id;
-    }
-    if (matchesAny(walletKeywords)) {
-      final w = accounts.where((a) => a.type == AccountType.wallet).firstOrNull;
-      if (w != null) return w.id;
-    }
-    if (matchesAny(cashKeywords)) {
-      final c = accounts.where((a) => a.type == AccountType.cash).firstOrNull;
-      if (c != null) return c.id;
-    }
-    if (matchesAny(savingsKeywords)) {
-      final s = accounts
-          .where((a) => a.type == AccountType.savings)
-          .firstOrNull;
-      if (s != null) return s.id;
-    }
-
-    return accountService.defaultAccount?.id;
+    // Fuzzy name/phrase matching
+    final resolved = tryResolveAccountFromText(accountName);
+    return resolved ?? accountService.defaultAccount?.id;
   }
 
   String _capitalize(String s) =>

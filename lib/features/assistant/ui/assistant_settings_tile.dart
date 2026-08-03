@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/account_service.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/budget_service.dart';
 import '../../../core/services/category_service.dart';
 import '../../../core/services/credit_card_bill_service.dart';
@@ -18,6 +19,7 @@ import 'assistant_screen.dart';
 class AssistantSettingsTile extends StatelessWidget {
   const AssistantSettingsTile({
     super.key,
+    required this.authService,
     required this.transactionService,
     required this.accountService,
     required this.budgetService,
@@ -26,6 +28,7 @@ class AssistantSettingsTile extends StatelessWidget {
     required this.creditCardBillService,
   });
 
+  final AuthService authService;
   final TransactionService transactionService;
   final AccountService accountService;
   final BudgetService budgetService;
@@ -95,6 +98,7 @@ class AssistantSettingsTile extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => ProviderScope(
           overrides: [
+            authServiceProvider.overrideWithValue(authService),
             transactionServiceProvider.overrideWithValue(transactionService),
             accountServiceProvider.overrideWithValue(accountService),
             budgetServiceProvider.overrideWithValue(budgetService),

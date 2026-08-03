@@ -163,6 +163,21 @@ class ContextWindowManager {
     _summary = null;
   }
 
+  /// Injects a synthetic user context message at the end of the history.
+  /// Used to merge multi-turn info (e.g. original prompt + amount reply)
+  /// so enrichment helpers see the full context in one message.
+  /// The injected message is hidden from the UI.
+  void injectContextMessage(String content) {
+    _allMessages.add(
+      ChatMessage(
+        id: 'ctx_${DateTime.now().millisecondsSinceEpoch}',
+        role: ChatRole.user,
+        content: content,
+        isHidden: true,
+      ),
+    );
+  }
+
   /// The current context summary, or `null` if none has been generated yet.
   ContextSummary? get currentSummary => _summary;
 

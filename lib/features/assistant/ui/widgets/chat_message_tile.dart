@@ -4,6 +4,12 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../models/chat_message.dart';
+import 'account_picker_tile.dart';
+import 'category_picker_tile.dart';
+import 'date_picker_tile.dart';
+import 'guided_account_picker.dart';
+import 'guided_category_picker.dart';
+import 'guided_transaction_form.dart';
 import 'streaming_message_tile.dart';
 
 /// Renders a single [ChatMessage] as a chat bubble.
@@ -22,8 +28,31 @@ class ChatMessageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (message.isHidden) return const SizedBox.shrink();
-    if (message.role == ChatRole.system)
+    if (message.messageType == ChatMessageType.accountTypePicker ||
+        message.messageType == ChatMessageType.accountPicker) {
+      return AccountPickerTile(message: message);
+    }
+    if (message.messageType == ChatMessageType.categoryPicker) {
+      return CategoryPickerTile(message: message);
+    }
+    if (message.messageType == ChatMessageType.guidedCategoryPicker) {
+      return const GuidedCategoryPicker();
+    }
+    if (message.messageType == ChatMessageType.guidedAccountPicker) {
+      return const GuidedAccountPicker();
+    }
+    if (message.messageType == ChatMessageType.guidedAccountSubPicker) {
+      return GuidedAccountSubPicker(metadata: message.metadata ?? {});
+    }
+    if (message.messageType == ChatMessageType.datePicker) {
+      return DatePickerTile(message: message);
+    }
+    if (message.messageType == ChatMessageType.guidedTransactionForm) {
+      return GuidedTransactionFormTile(message: message);
+    }
+    if (message.role == ChatRole.system) {
       return _SystemMessage(message: message);
+    }
     if (message.role == ChatRole.user) return _UserBubble(message: message);
     if (message.isStreaming) return StreamingMessageTile(message: message);
     return _AssistantBubble(message: message);

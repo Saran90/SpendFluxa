@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/models/account.dart';
 import '../data/assistant_repository.dart';
 import '../engine/abstract_ai_engine.dart';
 import '../engine/conversation_manager.dart';
@@ -163,9 +164,74 @@ class AssistantSessionNotifier extends StateNotifier<AssistantSessionState> {
 
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty || state.isGenerating) return;
-    await conversationManager.handleUserMessage(text);
-    // Ensure isGenerating is reset in state after the full pipeline completes,
-    // including any nested tool-call + summarisation LLM calls.
+    // Intercept if a guided transaction flow is active
+    if (conversationManager.isGuidedFlowActive) {
+      await conversationManager.handleGuidedTransactionInput(text);
+    } else {
+      await conversationManager.handleUserMessage(text);
+    }
+    state = state.copyWith(isGenerating: false);
+  }
+
+  /// Initiates a guided transaction flow (expense or income).
+  Future<void> startGuidedTransaction(String type) async {
+    await conversationManager.startGuidedTransactionFlow(type);
+    state = state.copyWith(isGenerating: false);
+  }
+
+  /// Handles user input for guided transaction step.
+  Future<void> handleGuidedTransactionInput(String input) async {
+    await conversationManager.handleGuidedTransactionInput(input);
+    state = state.copyWith(isGenerating: false);
+  }
+
+  /// Called by the account picker widget when the user selects an account.
+  void resolveAccountSelection(String? accountId) {
+    conversationManager.resolveAccountSelection(accountId);
+    state = state.copyWith(isGenerating: false);
+  }
+
+  /// Called by the category picker widget when the user selects a category.
+  void resolveCategorySelection(String? categoryName) {
+    conversationManager.resolveCategorySelection(categoryName);
+    state = state.copyWith(isGenerating: false);
+  }
+
+  /// Called by the guided category picker when the user taps a category chip.
+  void resolveGuidedCategory(String categoryName, String categoryLabel) {
+    conversationManager.resolveGuidedCategory(categoryName, categoryLabel);
+    state = state.copyWith(isGenerating: false);
+  }
+
+  /// Called by the guided account type picker when the user taps a type chip.
+  Future<void> resolveGuidedAccountType(
+    String accountTypeKey,
+    String accountTypeLabel,
+    List<Account> accountsOfType,
+  ) async {
+    await conversationManager.resolveGuidedAccountType(
+      accountTypeKey,
+      accountTypeLabel,
+      accountsOfType,
+    );
+    state = state.copyWith(isGenerating: false);
+  }
+
+  /// Called by the guided account sub-picker when the user selects a specific account.
+  void resolveGuidedAccountSub(String accountId, String accountName) {
+    conversationManager.resolveGuidedAccountSub(accountId, accountName);
+    state = state.copyWith(isGenerating: false);
+  }
+
+  /// Called by the date picker when the user selects a date.
+  Future<void> resolveGuidedDate(String displayLabel, DateTime date) async {
+    await conversationManager.resolveGuidedDate(displayLabel, date);
+    state = state.copyWith(isGenerating: false);
+  }
+
+  /// Called by the guided account picker when the user taps a payment method chip.
+  void resolveGuidedAccount(String accountName) {
+    conversationManager.resolveGuidedAccount(accountName);
     state = state.copyWith(isGenerating: false);
   }
 

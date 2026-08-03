@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/models/account.dart';
 import '../../../core/models/transaction.dart';
 import '../../../core/services/account_service.dart';
 import '../../../core/services/transaction_service.dart';
@@ -14,7 +15,6 @@ import '../data/tool_dispatcher.dart';
 import '../models/chat_message.dart';
 import '../models/tool_call.dart';
 import '../models/undo_stack_entry.dart';
-import '../preprocessing/transaction_extractor.dart';
 import '../validation/tool_call_validator.dart';
 
 /// Maximum number of retries when the LLM responds without a required tool call.
@@ -24,24 +24,6 @@ const _maxToolRetries = 3;
 const _maxUndoStackSize = 10;
 
 // ── Intent-detection patterns ─────────────────────────────────────────────────
-
-/// Returns `true` when [text] looks like a "log a transaction" command
-/// (as opposed to a general question, analysis request, or greeting).
-///
-/// The extractor pre-check is only applied to these messages so that
-/// queries like "What's my balance?" or "How are you?" aren't interrupted
-/// by the clarification gate.
-bool _looksLikeTransactionCommand(String text) {
-  final lower = text.toLowerCase();
-  // Action verbs that strongly signal a new transaction entry
-  return RegExp(
-    r'\b(spent|paid|bought|purchased|expense|debited|charged'
-    r'|received|got|earned|salary|credited|income'
-    r'|transfer(red)?|moved|add transaction|log transaction'
-    r'|record transaction|new transaction|add expense|add income)\b',
-    caseSensitive: false,
-  ).hasMatch(lower);
-}
 
 /// Returns `true` if [text] contains an undo intent.
 bool _isUndoIntent(String text) {
@@ -60,13 +42,19 @@ bool _isUndoAllIntent(String text) {
   return lower.contains('undo all') || lower == 'undo everything';
 }
 
-/// Returns `true` if the LLM response looks like it contains financial data
-/// answers without having gone through a tool call first — which means the
-/// model is hallucinating numbers.
+/// Returns `true` if the LLM response looks like it contains user-specific
+/// financial data answers without having gone through a tool call first.
+///
+/// This catches two cases:
+/// 1. The model deflects ("I don't have access to...")
+/// 2. The model hallucinates specific user amounts (₹X,XXX for "your balance")
+///
+/// General financial education ("a good savings rate is 20%") is NOT flagged —
+/// those are advice-level responses that don't require real user data.
 bool _responseNeedsData(String response) {
   final lower = response.toLowerCase();
 
-  // Explicit deflection phrases
+  // Explicit deflection phrases — always retry
   if (lower.contains("i don't have access") ||
       lower.contains("i can't tell") ||
       lower.contains("i'm unable") ||
@@ -77,22 +65,27 @@ bool _responseNeedsData(String response) {
     return true;
   }
 
-  // Detect hallucinated financial answers: contains rupee symbol or financial
-  // keywords paired with numbers — but NO tool call was emitted.
+  // Detect hallucinated personal financial answers:
+  // Contains rupee amounts AND first-person possessive phrases that imply
+  // the model is claiming to know the USER's specific data.
   final hasRupeeAmount =
       response.contains('₹') ||
       RegExp(
         r'\b\d[\d,]+\s*(rs|rupee|lakh|crore)',
         caseSensitive: false,
       ).hasMatch(response);
-  final hasFinancialKeywords = RegExp(
-    r'\b(spent|spend|balance|income|expense|budget|saving|transaction|amount'
-    r'|total|month|week|year|forecast|summary)\b',
+
+  // Phrases that indicate the model is asserting USER-specific values
+  final assertsUserData = RegExp(
+    r'\b(your (balance|spending|expenses|income|budget|savings|total)'
+    r'|you (spent|have|earned|saved|owe)'
+    r'|this month (you|your)'
+    r'|currently.*₹'
+    r'|balance is ₹)',
     caseSensitive: false,
   ).hasMatch(lower);
 
-  // If the reply looks like a financial answer with made-up numbers, retry.
-  if (hasRupeeAmount && hasFinancialKeywords) return true;
+  if (hasRupeeAmount && assertsUserData) return true;
 
   return false;
 }
@@ -122,14 +115,27 @@ class ConversationManager {
   final AccountService accountService;
 
   final _validator = ToolCallValidator();
-  final _extractor = TransactionExtractor();
   final _uuid = const Uuid();
 
   // ── Pending account selection ──────────────────────────────────────────────
-  // When the account cannot be resolved from the user's message, we pause the
-  // pipeline and wait for the user to pick one from the UI.
   Completer<String?>? _pendingAccountCompleter;
+  Completer<String?>? _pendingCategoryCompleter;
   String? _pendingPickerMessageId;
+
+  // ── Pending transaction (waiting for amount from user) ─────────────────────
+  ToolCall? _pendingTransactionCall;
+  String?
+  _pendingTransactionOriginalMessage; // original user message for context
+
+  // ── Guided transaction state ───────────────────────────────────────────────
+  String? _guidedTransactionType; // 'expense' or 'income'
+  double? _guidedTransactionAmount;
+  String? _guidedTransactionDescription; // "what for" - user input
+  String? _guidedTransactionCategory; // category name - from picker
+  String? _guidedTransactionAccount; // final account ID
+  DateTime? _guidedTransactionDate;
+  String _guidedTransactionStep =
+      ''; // 'description','amount','category','account','accountSub','date'
 
   // ── Message stream ─────────────────────────────────────────────────────────
 
@@ -150,6 +156,9 @@ class ConversationManager {
   // the outermost call (and all tool-triggered inner calls) are fully done.
   int _generatingDepth = 0;
   bool get isGenerating => _generatingDepth > 0;
+
+  /// True when a guided transaction flow is in progress.
+  bool get isGuidedFlowActive => _guidedTransactionType != null;
 
   StreamSubscription<String>? _tokenSub;
   StreamSubscription<String>? _completeSub;
@@ -188,23 +197,38 @@ class ConversationManager {
       return;
     }
 
-    // ── Transaction extraction pre-check ─────────────────────────────────────
-    // Only run the extractor when the message looks like a transaction log
-    // command (contains action keywords). Skip it for general questions,
-    // summaries, plan queries, greetings, etc. — those go straight to the LLM.
-    if (_looksLikeTransactionCommand(text)) {
-      final extracted = _extractor.extract(text);
-      if (extracted.needsClarification &&
-          extracted.overallConfidence < 0.85 &&
-          extracted.clarificationQuestion != null) {
-        final clarifyMsg = _createMessage(
-          ChatRole.assistant,
-          extracted.clarificationQuestion!,
+    // ── Pending amount reply ──────────────────────────────────────────────────
+    if (_pendingTransactionCall != null) {
+      final amount = _parseAmountFromText(text);
+      if (amount != null && amount > 0) {
+        final pending = _pendingTransactionCall!;
+        final originalMsg = _pendingTransactionOriginalMessage;
+        _pendingTransactionCall = null;
+        _pendingTransactionOriginalMessage = null;
+
+        final updatedArgs = Map<String, dynamic>.from(pending.arguments)
+          ..['amount'] = amount;
+        final resumedCall = ToolCall(
+          tool: pending.tool,
+          arguments: updatedArgs,
         );
-        _emit(clarifyMsg);
-        contextManager.addMessage(clarifyMsg);
+
+        // Inject a synthetic context message that combines the original user
+        // message + the amount reply, so account/note/category enrichment
+        // sees the full context (not just the bare "500").
+        if (originalMsg != null) {
+          // Temporarily replace the last user message in context with the
+          // enriched version so enrichment helpers can read it.
+          final syntheticContent = '$originalMsg for $text';
+          contextManager.injectContextMessage(syntheticContent);
+        }
+
+        await _dispatchAndRespond(resumedCall);
         return;
       }
+      // User didn't give a number — clear pending and let LLM handle it
+      _pendingTransactionCall = null;
+      _pendingTransactionOriginalMessage = null;
     }
 
     // ── LLM streaming ─────────────────────────────────────────────────────────
@@ -434,15 +458,49 @@ class ConversationManager {
         return;
       }
 
+      // ── Amount guard ────────────────────────────────────────────────────
+      // If this is a transaction creation call but the user never mentioned
+      // an amount, the model may have hallucinated one. Ask the user first.
+      if ((toolCall.tool == 'createTransaction' ||
+              toolCall.tool == 'createRecurringTransaction') &&
+          _isHallucinatedAmount(toolCall)) {
+        final askMsg = _createMessage(
+          ChatRole.assistant,
+          'How much was the amount?',
+        );
+        _emit(askMsg);
+        contextManager.addMessage(askMsg);
+        // Store the pending call AND the original user message for context
+        _pendingTransactionCall = toolCall;
+        // Find the last user message to preserve full context
+        final msgs = contextManager.allMessages;
+        for (var i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role == ChatRole.user) {
+            _pendingTransactionOriginalMessage = msgs[i].content;
+            break;
+          }
+        }
+        return;
+      }
+
       // For transaction mutations, extract the account mention from the
       // last user message and inject it if the model omitted the field.
-      final enrichedCall = _enrichTransactionAccount(toolCall);
+      final enrichedCall = await _enrichTransactionAccount(toolCall);
+
+      // Show category picker so user can confirm or correct the category.
+      // Also pass the full user message so candidates are context-aware.
+      final enrichedWithCategory = await _enrichTransactionCategory(
+        enrichedCall,
+      );
+
+      // Inject note from user message if missing (Issue 2)
+      final finalCall = _enrichTransactionNote(enrichedWithCategory);
 
       // Capture snapshot for undo BEFORE dispatch (for update/delete)
-      final snapshot = _captureSnapshotIfNeeded(enrichedCall);
+      final snapshot = _captureSnapshotIfNeeded(finalCall);
 
       // Execute tool
-      final result = await dispatcher.dispatch(enrichedCall);
+      final result = await dispatcher.dispatch(finalCall);
       debugPrint('[FluxAI] Tool result ok=${result.ok}: ${result.result}');
 
       if (!result.ok) {
@@ -456,31 +514,26 @@ class ConversationManager {
       }
 
       // Push to undo stack for mutating tools
-      _maybePushUndo(enrichedCall, result, snapshot);
+      _maybePushUndo(finalCall, result, snapshot);
 
       // Try to format the result deterministically (guaranteed accurate numbers).
       final deterministicSummary = ToolResultFormatter.format(
-        enrichedCall.tool,
+        finalCall.tool,
         result,
       );
 
       if (deterministicSummary != null) {
-        // Store the real data as a tool message (excluded from buildPrompt)
-        // so the model doesn't learn to copy these number patterns.
         final toolResultMsg = _createMessage(
           ChatRole.tool,
-          '[TOOL RESULT]\n${_resultToContext(toolCall.tool, result)}\n[END TOOL RESULT]',
+          '[TOOL RESULT]\n${_resultToContext(finalCall.tool, result)}\n[END TOOL RESULT]',
         );
         contextManager.addMessage(toolResultMsg);
 
-        // Emit the accurate summary to the UI.
         final summaryMsg = _createMessage(
           ChatRole.assistant,
           deterministicSummary,
         );
         _emit(summaryMsg);
-        // Add a short neutral acknowledgement to context (not the number-filled
-        // summary) so the model doesn't learn to copy financial number patterns.
         final contextAck = _createMessage(
           ChatRole.assistant,
           'Here is the data from your records.',
@@ -488,15 +541,12 @@ class ConversationManager {
         contextManager.addMessage(contextAck);
         unawaited(contextManager.maybeSummarise(engine));
       } else {
-        // No deterministic formatter for this tool — fall back to LLM summary.
         final toolResultMsg = _createMessage(
           ChatRole.tool,
-          '[TOOL RESULT]\n${_resultToContext(enrichedCall.tool, result)}\n[END TOOL RESULT]',
+          '[TOOL RESULT]\n${_resultToContext(finalCall.tool, result)}\n[END TOOL RESULT]',
         );
         contextManager.addMessage(toolResultMsg);
 
-        // Use a tool-free system prompt so the model summarises naturally
-        // instead of emitting another tool call.
         await _streamLlmResponse(
           retryCount: 0,
           systemPromptOverride: fluxAiToolResultSummaryPrompt,
@@ -622,6 +672,291 @@ class ConversationManager {
     }
   }
 
+  /// Starts a guided transaction flow for adding an expense or income.
+  Future<void> startGuidedTransactionFlow(String type) async {
+    _guidedTransactionType = type;
+    _guidedTransactionDescription = null;
+    _guidedTransactionAmount = null;
+    _guidedTransactionCategory = null;
+    _guidedTransactionAccount = null;
+    _guidedTransactionDate = null;
+    _guidedTransactionStep = 'description';
+
+    final greeting = type == 'expense'
+        ? '💳 Let\'s add an expense.\n\nWhat are you spending on?'
+        : '💰 Let\'s add income.\n\nWhat\'s the source?';
+
+    final msg = _createMessage(
+      ChatRole.assistant,
+      greeting,
+      messageType: ChatMessageType.text,
+    );
+    _emit(msg);
+    contextManager.addMessage(msg);
+  }
+
+  /// Handles user input during guided transaction flow.
+  Future<void> handleGuidedTransactionInput(String input) async {
+    if (_guidedTransactionType == null) return;
+
+    final trimmed = input.trim();
+
+    // Emit the user message visibly in chat
+    final userMsg = _createMessage(ChatRole.user, trimmed);
+    _emit(userMsg);
+    contextManager.addMessage(userMsg);
+
+    switch (_guidedTransactionStep) {
+      case 'description':
+        // Step 1: What transaction (description/note)
+        _guidedTransactionDescription = trimmed;
+        _guidedTransactionStep = 'amount';
+
+        final amountMsg = _createMessage(
+          ChatRole.assistant,
+          'How much?',
+          messageType: ChatMessageType.text,
+        );
+        _emit(amountMsg);
+        contextManager.addMessage(amountMsg);
+        break;
+
+      case 'amount':
+        // Step 2: Amount
+        final amount = _parseAmountFromText(trimmed);
+        if (amount != null && amount > 0) {
+          _guidedTransactionAmount = amount;
+          _guidedTransactionStep = 'category';
+
+          final categoryMsg = _createMessage(
+            ChatRole.assistant,
+            'Which category?',
+            messageType: ChatMessageType.guidedCategoryPicker,
+          );
+          _emit(categoryMsg);
+          contextManager.addMessage(categoryMsg);
+        } else {
+          final errorMsg = _createMessage(
+            ChatRole.assistant,
+            'Please enter a valid amount, e.g. "500" or "₹200".',
+            messageType: ChatMessageType.text,
+          );
+          _emit(errorMsg);
+          contextManager.addMessage(errorMsg);
+        }
+        break;
+
+      case 'date':
+        // Step 5: Date — only reached if user typed a date manually
+        final date = _parseDateFromText(trimmed);
+        if (date != null) {
+          _guidedTransactionDate = date;
+          await _confirmAndCreateTransaction();
+        } else {
+          final errorMsg = _createMessage(
+            ChatRole.assistant,
+            'Please tap "Today" or pick a date from the calendar.',
+            messageType: ChatMessageType.text,
+          );
+          _emit(errorMsg);
+          contextManager.addMessage(errorMsg);
+        }
+        break;
+    }
+  }
+
+  /// Called when the user taps a category chip in the guided flow.
+  void resolveGuidedCategory(String categoryName, String categoryLabel) {
+    if (_guidedTransactionStep != 'category') return;
+    _guidedTransactionCategory = categoryName;
+    _guidedTransactionStep = 'account';
+
+    // Show user's selection as a chat message
+    final userMsg = _createMessage(ChatRole.user, categoryLabel);
+    _emit(userMsg);
+    contextManager.addMessage(userMsg);
+
+    final msg = _createMessage(
+      ChatRole.assistant,
+      'Which payment method?',
+      messageType: ChatMessageType.guidedAccountPicker,
+    );
+    _emit(msg);
+    contextManager.addMessage(msg);
+  }
+
+  /// Called when the user taps a payment type chip (Bank/Card/Wallet/Cash/Savings).
+  /// If Cash is selected, skip the sub-picker and go straight to date.
+  Future<void> resolveGuidedAccountType(
+    String accountTypeKey,
+    String accountTypeLabel,
+    List<Account> accountsOfType,
+  ) async {
+    if (_guidedTransactionStep != 'account') return;
+
+    // Show user's selection as a chat message
+    final userMsg = _createMessage(ChatRole.user, accountTypeLabel);
+    _emit(userMsg);
+    contextManager.addMessage(userMsg);
+
+    // Cash → no sub-picker needed
+    if (accountTypeKey == AccountType.cash.name) {
+      final cashAccount = accountsOfType.firstOrNull;
+      _guidedTransactionAccount = cashAccount?.id ?? AccountType.cash.name;
+      _guidedTransactionStep = 'date';
+
+      final msg = _createMessage(
+        ChatRole.assistant,
+        'When was this transaction?',
+        messageType: ChatMessageType.datePicker,
+      );
+      _emit(msg);
+      contextManager.addMessage(msg);
+      return;
+    }
+
+    // Other types → show sub-picker with actual named accounts
+    _guidedTransactionStep = 'accountSub';
+
+    final msg = _createMessage(
+      ChatRole.assistant,
+      'Which ${_accountTypeLabel(accountTypeKey)}?',
+      messageType: ChatMessageType.guidedAccountSubPicker,
+      metadata: {
+        'accountType': accountTypeKey,
+        'accounts': accountsOfType
+            .map((a) => {'id': a.id, 'name': a.name})
+            .toList(),
+      },
+    );
+    _emit(msg);
+    contextManager.addMessage(msg);
+  }
+
+  /// Called when the user selects a specific account in the sub-picker.
+  void resolveGuidedAccountSub(String accountId, String accountName) {
+    if (_guidedTransactionStep != 'accountSub') return;
+    _guidedTransactionAccount = accountId;
+    _guidedTransactionStep = 'date';
+
+    // Show user's selection as a chat message
+    final userMsg = _createMessage(ChatRole.user, accountName);
+    _emit(userMsg);
+    contextManager.addMessage(userMsg);
+
+    final msg = _createMessage(
+      ChatRole.assistant,
+      'When was this transaction?',
+      messageType: ChatMessageType.datePicker,
+    );
+    _emit(msg);
+    contextManager.addMessage(msg);
+  }
+
+  /// Called when the user selects a date in the guided flow.
+  /// [displayLabel] is the human-readable label ("Today" or "Aug 03, 2026").
+  /// [isoDate] is the ISO string passed to the transaction.
+  Future<void> resolveGuidedDate(String displayLabel, DateTime date) async {
+    if (_guidedTransactionStep != 'date') return;
+
+    // Show user's selection as a chat message
+    final userMsg = _createMessage(ChatRole.user, displayLabel);
+    _emit(userMsg);
+    contextManager.addMessage(userMsg);
+
+    _guidedTransactionDate = date;
+    await _confirmAndCreateTransaction();
+  }
+
+  String _accountTypeLabel(String key) {
+    switch (key) {
+      case 'bank':
+        return 'Bank Account';
+      case 'creditCard':
+        return 'Credit Card';
+      case 'wallet':
+        return 'Wallet';
+      case 'savings':
+        return 'Savings Account';
+      default:
+        return 'account';
+    }
+  }
+
+  /// Called when the user taps a payment method chip in the guided flow.
+  void resolveGuidedAccount(String accountName) {
+    if (_guidedTransactionStep != 'account') return;
+    _guidedTransactionAccount = accountName;
+    _guidedTransactionStep = 'date';
+
+    final msg = _createMessage(
+      ChatRole.assistant,
+      'When was this transaction?',
+      messageType: ChatMessageType.datePicker,
+    );
+    _emit(msg);
+    contextManager.addMessage(msg);
+  }
+
+  /// Confirms and creates the transaction from guided flow data.
+  Future<void> _confirmAndCreateTransaction() async {
+    if (_guidedTransactionDescription == null ||
+        _guidedTransactionAmount == null ||
+        _guidedTransactionCategory == null ||
+        _guidedTransactionAccount == null ||
+        _guidedTransactionDate == null) {
+      return;
+    }
+
+    final type = _guidedTransactionType == 'expense'
+        ? TransactionType.expense
+        : TransactionType.income;
+
+    // Create tool call for the transaction
+    final toolCall = ToolCall(
+      tool: 'createTransaction',
+      arguments: {
+        'type': type.name,
+        'amount': _guidedTransactionAmount,
+        'category': _guidedTransactionCategory,
+        'account': _guidedTransactionAccount,
+        'dateIso': _guidedTransactionDate
+            ?.toIso8601String(), // matches dispatcher
+        'note': _guidedTransactionDescription, // fills the notes field
+        'payee':
+            _guidedTransactionDescription, // also used as transaction title
+      },
+    );
+
+    // Execute the tool
+    final result = await dispatcher.dispatch(toolCall);
+
+    // Clear guided state AFTER execution
+    _guidedTransactionType = null;
+    _guidedTransactionDescription = null;
+    _guidedTransactionAmount = null;
+    _guidedTransactionCategory = null;
+    _guidedTransactionAccount = null;
+    _guidedTransactionDate = null;
+    _guidedTransactionStep = '';
+
+    if (result.ok) {
+      final confirmMsg = _createMessage(
+        ChatRole.assistant,
+        '✅ Transaction added successfully!',
+      );
+      _emit(confirmMsg);
+      contextManager.addMessage(confirmMsg);
+    } else {
+      final errorMsg = _createMessage(
+        ChatRole.system,
+        '⚠️ Failed to create transaction: ${result.error}',
+      );
+      _emit(errorMsg);
+      contextManager.addMessage(errorMsg);
+    }
+  }
+
   /// Called by the UI when the user selects an account from the picker.
   /// Completes the pending [_pendingAccountCompleter] so the pipeline resumes.
   void resolveAccountSelection(String? accountId) {
@@ -645,23 +980,36 @@ class ConversationManager {
     }
   }
 
+  /// Called by the UI when the user selects a category from the picker.
+  void resolveCategorySelection(String? categoryName) {
+    if (_pendingCategoryCompleter != null &&
+        !_pendingCategoryCompleter!.isCompleted) {
+      if (_pendingPickerMessageId != null) {
+        final hidden = ChatMessage(
+          id: _pendingPickerMessageId!,
+          role: ChatRole.assistant,
+          content: '',
+          isHidden: true,
+          sessionId: _sessionId,
+          timestamp: DateTime.now(),
+        );
+        _emit(hidden);
+      }
+      _pendingCategoryCompleter!.complete(categoryName);
+      _pendingCategoryCompleter = null;
+      _pendingPickerMessageId = null;
+    }
+  }
+
   // ── Private: account enrichment ───────────────────────────────────────────
 
-  /// For transaction creation/update tools, tries to resolve the account from
-  /// the last user message. If the account field is already set, returns the
-  /// call unchanged. If no account can be inferred, shows an interactive picker
-  /// in the chat and awaits the user's selection.
   Future<ToolCall> _enrichTransactionAccount(ToolCall call) async {
     const accountTools = {'createTransaction', 'createRecurringTransaction'};
     if (!accountTools.contains(call.tool)) return call;
 
-    // Already has an account argument — nothing to do.
-    if (call.arguments['account'] != null &&
-        (call.arguments['account'] as String).isNotEmpty) {
-      return call;
-    }
+    final rawAccount = call.arguments['account'] as String?;
 
-    // Try to extract account mention from the last user message in context.
+    // Get last user message for fallback
     final allMsgs = contextManager.allMessages;
     ChatMessage? lastUser;
     for (var i = allMsgs.length - 1; i >= 0; i--) {
@@ -670,8 +1018,16 @@ class ConversationManager {
         break;
       }
     }
-    if (lastUser != null) {
-      final resolved = dispatcher.tryResolveAccountFromText(lastUser.content);
+
+    // Try sources independently — never concatenate (confuses the scorer)
+    final sources = [
+      if (rawAccount != null && rawAccount.isNotEmpty) rawAccount,
+      if (lastUser != null) lastUser.content,
+    ];
+
+    for (final text in sources) {
+      final resolved = dispatcher.tryResolveAccountFromText(text);
+      debugPrint('[AccountEnrich] text="$text" resolved=$resolved');
       if (resolved != null) {
         final newArgs = Map<String, dynamic>.from(call.arguments)
           ..['account'] = resolved;
@@ -679,20 +1035,29 @@ class ConversationManager {
       }
     }
 
-    // No account found — show the two-step picker.
-    final accountId = await _showAccountPicker();
+    // Nothing matched — detect type and show picker pre-filtered to that type
+    final typeText = rawAccount?.isNotEmpty == true
+        ? rawAccount!
+        : (lastUser?.content ?? '');
+    final detectedType = typeText.isNotEmpty
+        ? dispatcher.detectAccountTypeFromText(typeText)
+        : null;
+    debugPrint('[AccountEnrich] ambiguous, detectedType=$detectedType');
+
+    final accountId = await _showAccountPicker(preselectedType: detectedType);
     if (accountId != null) {
       final newArgs = Map<String, dynamic>.from(call.arguments)
         ..['account'] = accountId;
       return ToolCall(tool: call.tool, arguments: newArgs);
     }
 
-    return call; // user dismissed — proceed with default
+    return call;
   }
 
   /// Emits an account-type picker message and waits for the user to complete
   /// the two-step selection. Returns the chosen account ID, or null if skipped.
-  Future<String?> _showAccountPicker() async {
+  /// If [preselectedType] is provided, jumps straight to the account list.
+  Future<String?> _showAccountPicker({AccountType? preselectedType}) async {
     final pickerId = _uuid.v4();
     _pendingPickerMessageId = pickerId;
     _pendingAccountCompleter = Completer<String?>();
@@ -701,7 +1066,12 @@ class ConversationManager {
       id: pickerId,
       role: ChatRole.assistant,
       content: 'Which payment method did you use?',
-      messageType: ChatMessageType.accountTypePicker,
+      messageType: preselectedType != null
+          ? ChatMessageType.accountPicker
+          : ChatMessageType.accountTypePicker,
+      metadata: preselectedType != null
+          ? {'accountType': preselectedType.name}
+          : null,
       sessionId: _sessionId,
       timestamp: DateTime.now(),
     );
@@ -710,10 +1080,173 @@ class ConversationManager {
     return _pendingAccountCompleter!.future;
   }
 
-  ChatMessage _createMessage(ChatRole role, String content) => ChatMessage(
+  // ── Private: category enrichment ─────────────────────────────────────────
+
+  Future<ToolCall> _enrichTransactionCategory(ToolCall call) async {
+    const categoryTools = {'createTransaction', 'createRecurringTransaction'};
+    if (!categoryTools.contains(call.tool)) return call;
+
+    final typeStr = call.arguments['type'] as String? ?? 'expense';
+    final type = TransactionType.values.firstWhere(
+      (t) => t.name == typeStr,
+      orElse: () => TransactionType.expense,
+    );
+    final categoryInput = call.arguments['category'] as String?;
+
+    // Build a richer query by combining the LLM's category + last user message.
+    // This makes candidates context-aware (Issue 3).
+    final allMsgs = contextManager.allMessages;
+    String? lastUserText;
+    for (var i = allMsgs.length - 1; i >= 0; i--) {
+      if (allMsgs[i].role == ChatRole.user) {
+        lastUserText = allMsgs[i].content;
+        break;
+      }
+    }
+
+    // Combine: category arg (more specific) + user message words
+    final richQuery = [
+      if (categoryInput != null && categoryInput.isNotEmpty) categoryInput,
+      if (lastUserText != null) lastUserText,
+    ].join(' ');
+
+    final candidates = dispatcher.resolveCategoryWithCandidates(
+      type,
+      richQuery.isNotEmpty ? richQuery : categoryInput,
+    );
+
+    final chosen = await _showCategoryPicker(candidates, type);
+
+    if (chosen != null) {
+      final newArgs = Map<String, dynamic>.from(call.arguments)
+        ..['category'] = chosen;
+      return ToolCall(tool: call.tool, arguments: newArgs);
+    }
+    return call;
+  }
+
+  Future<String?> _showCategoryPicker(
+    List<TransactionCategory> candidates,
+    TransactionType type,
+  ) async {
+    final pickerId = _uuid.v4();
+    _pendingPickerMessageId = pickerId;
+    _pendingCategoryCompleter = Completer<String?>();
+
+    final pickerMsg = ChatMessage(
+      id: pickerId,
+      role: ChatRole.assistant,
+      content: 'Select a category:',
+      messageType: ChatMessageType.categoryPicker,
+      metadata: {
+        'candidates': candidates.map((c) => c.name).toList(),
+        'suggested': candidates.first.name,
+        'transactionType': type.name,
+      },
+      sessionId: _sessionId,
+      timestamp: DateTime.now(),
+    );
+    _emit(pickerMsg);
+
+    return _pendingCategoryCompleter!.future;
+  }
+
+  // ── Private: utilities ────────────────────────────────────────────────────
+
+  /// Extracts a meaningful note from the user message and injects it into
+  /// the transaction if note/payee are not already set.
+  ///
+  /// Logic:
+  /// - Strip action verbs and payment phrases from the user message
+  /// - What remains (e.g. "toys", "groceries", "mobile recharge") becomes the note
+  /// - If the remaining text matches a category, it's still added as a note
+  ToolCall _enrichTransactionNote(ToolCall call) {
+    const noteTools = {'createTransaction', 'createRecurringTransaction'};
+    if (!noteTools.contains(call.tool)) return call;
+
+    // Already has a note or payee — nothing to add
+    final existingNote = call.arguments['note'] as String?;
+    final existingPayee = call.arguments['payee'] as String?;
+    if ((existingNote != null && existingNote.isNotEmpty) ||
+        (existingPayee != null && existingPayee.isNotEmpty)) {
+      return call;
+    }
+
+    // Find last user message
+    final allMsgs = contextManager.allMessages;
+    String? lastUserText;
+    for (var i = allMsgs.length - 1; i >= 0; i--) {
+      if (allMsgs[i].role == ChatRole.user) {
+        lastUserText = allMsgs[i].content;
+        break;
+      }
+    }
+    if (lastUserText == null || lastUserText.trim().isEmpty) return call;
+
+    final extracted = _extractItemFromMessage(lastUserText);
+    if (extracted == null || extracted.isEmpty) return call;
+
+    final newArgs = Map<String, dynamic>.from(call.arguments)
+      ..['note'] = extracted;
+    return ToolCall(tool: call.tool, arguments: newArgs);
+  }
+
+  /// Extracts the item/thing the user bought/paid for from their message.
+  /// e.g. "bought toys with federal credit card" → "toys"
+  /// e.g. "paid electricity bill" → "electricity bill"
+  String? _extractItemFromMessage(String text) {
+    var cleaned = text.trim().toLowerCase();
+
+    // Remove payment method phrases
+    cleaned = cleaned
+        .replaceAll(RegExp(r'\b(using|with|via|through|on|by|from)\b.*$'), '')
+        .trim();
+
+    // Remove leading action verbs
+    cleaned = cleaned
+        .replaceAll(
+          RegExp(
+            r'^(bought|purchased|paid|spent|got|added|add|log|record|created?'
+            r'|bought for|paid for|expense for|expense of)\s+',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
+
+    // Remove amount patterns
+    cleaned = cleaned
+        .replaceAll(
+          RegExp(
+            r'₹[\d,]+(?:\.\d{1,2})?|[\d,]+(?:\.\d{1,2})?\s*(?:₹|rs\.?|rupees?)',
+          ),
+          '',
+        )
+        .trim();
+
+    // Remove filler words
+    cleaned = cleaned
+        .replaceAll(RegExp(r'\b(a|an|the|some|my|for|of)\b'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (cleaned.isEmpty || cleaned.length < 2) return null;
+
+    // Capitalise first letter
+    return cleaned[0].toUpperCase() + cleaned.substring(1);
+  }
+
+  ChatMessage _createMessage(
+    ChatRole role,
+    String content, {
+    ChatMessageType messageType = ChatMessageType.text,
+    Map<String, dynamic>? metadata,
+  }) => ChatMessage(
     id: _uuid.v4(),
     role: role,
     content: content,
+    messageType: messageType,
+    metadata: metadata,
     isStreaming: false,
     sessionId: _sessionId,
     timestamp: DateTime.now(),
@@ -732,6 +1265,151 @@ class ConversationManager {
     _tokenSub = null;
     _completeSub = null;
     _errorSub = null;
+  }
+
+  // ── Amount helpers ────────────────────────────────────────────────────────
+
+  /// Returns true when the LLM emitted a createTransaction call but the user
+  /// never mentioned a specific amount in the conversation — meaning the model
+  /// hallucinated the amount.
+  bool _isHallucinatedAmount(ToolCall call) {
+    final amount = call.arguments['amount'];
+    if (amount == null) return true; // no amount at all
+    final amtNum = (amount as num?)?.toDouble() ?? 0;
+    if (amtNum <= 0) return true;
+
+    // Check if any recent user message contained a number that could be the amount
+    final msgs = contextManager.allMessages;
+    for (var i = msgs.length - 1; i >= 0 && i >= msgs.length - 4; i--) {
+      if (msgs[i].role == ChatRole.user) {
+        final text = msgs[i].content;
+        if (_parseAmountFromText(text) != null) return false;
+      }
+    }
+    return true; // no amount found in recent user messages
+  }
+
+  /// Parses a numeric amount from a user message.
+  /// Returns null if no clear number is found.
+  double? _parseAmountFromText(String text) {
+    // Match: ₹500, Rs 500, 500 rupees, or bare number >= 1
+    final patterns = [
+      RegExp(
+        r'(?:₹|rs\.?|rupees?)\s*([\d,]+(?:\.\d{1,2})?)',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'([\d,]+(?:\.\d{1,2})?)\s*(?:₹|rs\.?|rupees?)',
+        caseSensitive: false,
+      ),
+      RegExp(r'\b([\d,]+(?:\.\d{1,2})?)\b'),
+    ];
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(text);
+      if (match != null) {
+        final cleaned = match.group(1)!.replaceAll(',', '');
+        final value = double.tryParse(cleaned);
+        if (value != null && value >= 1) return value;
+      }
+    }
+    return null;
+  }
+
+  /// Parses a date from user input (e.g., "today", "yesterday", "2024-08-03").
+  DateTime? _parseDateFromText(String text) {
+    final lower = text.toLowerCase().trim();
+    final now = DateTime.now();
+
+    // Handle relative dates
+    if (lower == 'today') {
+      return DateTime(now.year, now.month, now.day);
+    }
+    if (lower == 'yesterday') {
+      final yesterday = now.subtract(const Duration(days: 1));
+      return DateTime(yesterday.year, yesterday.month, yesterday.day);
+    }
+
+    // Try parsing ISO format (YYYY-MM-DD)
+    try {
+      final parsed = DateTime.parse(text);
+      return parsed;
+    } catch (_) {}
+
+    // Try parsing common formats
+    final formats = [
+      RegExp(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', multiLine: false),
+      RegExp(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})', multiLine: false),
+    ];
+
+    for (final format in formats) {
+      final match = format.firstMatch(text);
+      if (match != null) {
+        try {
+          final groups = match.groups([1, 2, 3]);
+          int day, month, year;
+
+          if (text.contains(RegExp(r'\d{4}[/-]\d{1,2}[/-]\d{1,2}'))) {
+            // YYYY-MM-DD format
+            year = int.parse(groups[0]!);
+            month = int.parse(groups[1]!);
+            day = int.parse(groups[2]!);
+          } else {
+            // DD-MM-YYYY or MM-DD-YYYY format
+            day = int.parse(groups[0]!);
+            month = int.parse(groups[1]!);
+            year = int.parse(groups[2]!);
+          }
+
+          return DateTime(year, month, day);
+        } catch (_) {}
+      }
+    }
+
+    return null;
+  }
+
+  /// Dispatches a validated tool call and emits the result, bypassing the LLM.
+  /// Used when resuming a pending transaction after the user provides the amount.
+  Future<void> _dispatchAndRespond(ToolCall call) async {
+    _generatingDepth++;
+    try {
+      final enrichedCall = await _enrichTransactionAccount(call);
+      final finalCall = await _enrichTransactionCategory(enrichedCall);
+      final snapshot = _captureSnapshotIfNeeded(finalCall);
+      final result = await dispatcher.dispatch(finalCall);
+
+      if (!result.ok) {
+        final errMsg = _createMessage(
+          ChatRole.system,
+          '⚠️ ${result.error ?? 'Tool failed'}',
+        );
+        _emit(errMsg);
+        contextManager.addMessage(errMsg);
+        return;
+      }
+
+      _maybePushUndo(finalCall, result, snapshot);
+
+      final summary = ToolResultFormatter.format(finalCall.tool, result);
+      if (summary != null) {
+        final toolResultMsg = _createMessage(
+          ChatRole.tool,
+          '[TOOL RESULT]\n${_resultToContext(finalCall.tool, result)}\n[END TOOL RESULT]',
+        );
+        contextManager.addMessage(toolResultMsg);
+        final summaryMsg = _createMessage(ChatRole.assistant, summary);
+        _emit(summaryMsg);
+        contextManager.addMessage(
+          _createMessage(
+            ChatRole.assistant,
+            'Here is the data from your records.',
+          ),
+        );
+        unawaited(contextManager.maybeSummarise(engine));
+      }
+    } finally {
+      _generatingDepth = (_generatingDepth - 1).clamp(0, 999);
+    }
   }
 
   String _resultToContext(String tool, ToolResult result) {

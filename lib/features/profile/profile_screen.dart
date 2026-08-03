@@ -314,6 +314,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     // ── AI Assistant ──────────────────────────────────────
                     _groupDivider(),
                     AssistantSettingsTile(
+                      authService: authService,
                       transactionService: transactionService,
                       accountService: accountService,
                       budgetService: budgetService,
