@@ -52,7 +52,7 @@ android {
         // plugin exposes them as `flutter.versionName` and
         // `flutter.versionCode`, so updating the pubspec is enough —
         // no need to edit this file when bumping the version.
-        versionCode = 7
+        versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
